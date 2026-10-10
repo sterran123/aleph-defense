@@ -28,8 +28,8 @@ function makeResponse() {
   return response;
 }
 
-test('stage-four identity provider config matches the Supabase Auth verifier contract', () => {
-  assert.equal(config.step, 4);
+test('stage-five identity provider config matches the Supabase Auth verifier contract', () => {
+  assert.equal(config.step, 5);
   assert.equal(config.identityProvider.issuer, 'https://ufsdwlcxqwasyuhneynz.supabase.co/auth/v1');
   assert.equal(config.identityProvider.audience, 'authenticated');
   assert.equal(config.identityProvider.jwksUrl,
