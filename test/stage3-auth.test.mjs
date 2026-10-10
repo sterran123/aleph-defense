@@ -28,8 +28,8 @@ function makeResponse() {
   return response;
 }
 
-test('stage-three identity provider config matches the Supabase Auth verifier contract', () => {
-  assert.equal(config.step, 3);
+test('stage-four identity provider config matches the Supabase Auth verifier contract', () => {
+  assert.equal(config.step, 4);
   assert.equal(config.identityProvider.issuer, 'https://ufsdwlcxqwasyuhneynz.supabase.co/auth/v1');
   assert.equal(config.identityProvider.audience, 'authenticated');
   assert.equal(config.identityProvider.jwksUrl,
@@ -158,7 +158,7 @@ function createMemorySupabase(initialRows = []) {
   return { supabase, rows, calls };
 }
 
-test('collection CRUD stores verified owner ID and returns only that user’s notes', async () => {
+test('collection create and list use only the verified owner ID', async () => {
   const ownerA = 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa';
   const ownerB = 'bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb';
   const { supabase, rows, calls } = createMemorySupabase();
@@ -168,64 +168,95 @@ test('collection CRUD stores verified owner ID and returns only that user’s no
   })[authorization] ?? null;
   const handlers = createNotesHandlers({ supabase, verifyLogin });
 
-  const createResponse = makeResponse();
-  await handlers.collection({ method: 'POST', headers: { authorization: 'Bearer A' },
-    body: { title: 'A synthetic note', body: 'synthetic body' } }, createResponse);
-  assert.equal(createResponse.statusCode, 201);
-  assert.match(createResponse.body.id, /^[0-9a-f-]{36}$/iu);
-  const createdRow = rows.find(row => row.id === createResponse.body.id);
-  assert.equal(createdRow.owner_id, ownerA);
-  assert.equal(createdRow.title, 'A synthetic note');
-  assert.equal(createdRow.content, 'synthetic body');
+  const createForOwner = async (authorization, title) => {
+    const response = makeResponse();
+    await handlers.collection({ method: 'POST', headers: { authorization },
+      body: { title, body: `${title} synthetic body` } }, response);
+    assert.equal(response.statusCode, 201);
+    return rows.find(row => row.id === response.body.id);
+  };
+  const noteA = await createForOwner('Bearer A', 'A synthetic note');
+  const noteB = await createForOwner('Bearer B', 'B synthetic note');
+  assert.equal(noteA.owner_id, ownerA);
+  assert.equal(noteB.owner_id, ownerB);
 
-  const listResponse = makeResponse();
-  await handlers.collection({ method: 'GET', headers: { authorization: 'Bearer A' } }, listResponse);
-  assert.deepEqual(listResponse.body, [{ id: createdRow.id, title: 'A synthetic note', body: 'synthetic body' }]);
+  const listA = makeResponse();
+  await handlers.collection({ method: 'GET', headers: { authorization: 'Bearer A' } }, listA);
+  assert.deepEqual(listA.body, [{ id: noteA.id, title: noteA.title, body: noteA.content }]);
+  const listB = makeResponse();
+  await handlers.collection({ method: 'GET', headers: { authorization: 'Bearer B' } }, listB);
+  assert.deepEqual(listB.body, [{ id: noteB.id, title: noteB.title, body: noteB.content }]);
   assert.ok(calls.some(call => call.column === 'owner_id' && call.value === ownerA));
-
-  const otherList = makeResponse();
-  await handlers.collection({ method: 'GET', headers: { authorization: 'Bearer B' } }, otherList);
-  assert.deepEqual(otherList.body, []);
+  assert.ok(calls.some(call => call.column === 'owner_id' && call.value === ownerB));
 
   const spoofedOwner = makeResponse();
   await handlers.collection({ method: 'POST', headers: { authorization: 'Bearer A' },
-    body: { title: 'spoof', body: 'no', owner_id: ownerB } }, spoofedOwner);
+    body: { title: 'spoof', body: 'synthetic', owner_id: ownerB } }, spoofedOwner);
   assert.equal(spoofedOwner.statusCode, 400);
-  assert.equal(rows.length, 1);
+  assert.equal(rows.length, 2);
 });
 
-test('stage-three item routes intentionally defer cross-owner checks until stage four', async () => {
+test('item routes deny cross-owner reads, updates, and deletes while allowing each owner CRUD', async () => {
   const ownerA = 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa';
   const ownerB = 'bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb';
-  const noteId = 'cccccccc-cccc-4ccc-8ccc-cccccccccccc';
-  const { supabase, rows } = createMemorySupabase([{
-    id: noteId, owner_id: ownerA, title: 'A note', content: 'synthetic original', sort_order: 1,
-  }]);
+  const noteAId = 'cccccccc-cccc-4ccc-8ccc-cccccccccccc';
+  const noteBId = 'dddddddd-dddd-4ddd-8ddd-dddddddddddd';
+  const { supabase, rows, calls } = createMemorySupabase([
+    { id: noteAId, owner_id: ownerA, title: 'A note', content: 'synthetic A body', sort_order: 1 },
+    { id: noteBId, owner_id: ownerB, title: 'B note', content: 'synthetic B body', sort_order: 2 },
+  ]);
   const verifyLogin = async authorization => ({
     'Bearer A': { kind: 'student', userId: ownerA },
     'Bearer B': { kind: 'student', userId: ownerB },
   })[authorization] ?? null;
   const handlers = createNotesHandlers({ supabase, verifyLogin });
 
-  const readResponse = makeResponse();
-  await handlers.item({ method: 'GET', headers: { authorization: 'Bearer B' }, query: { id: noteId } }, readResponse);
-  assert.equal(readResponse.statusCode, 200);
-  assert.deepEqual(readResponse.body, { id: noteId, title: 'A note', body: 'synthetic original' });
+  for (const method of ['GET', 'PUT', 'DELETE']) {
+    const response = makeResponse();
+    await handlers.item({ method, headers: { authorization: 'Bearer B' }, query: { id: noteAId },
+      body: method === 'PUT' ? { title: 'B unauthorized edit', body: 'synthetic forbidden' } : undefined }, response);
+    assert.equal(response.statusCode, 404);
+    assert.deepEqual(response.body, { error: 'NOTE_NOT_FOUND' });
+  }
+  assert.equal(rows.find(row => row.id === noteAId).owner_id, ownerA);
+  assert.equal(rows.find(row => row.id === noteAId).title, 'A note');
+  assert.ok(calls.some(call => call.column === 'owner_id' && call.value === ownerB));
 
-  const updateResponse = makeResponse();
-  await handlers.item({ method: 'PUT', headers: { authorization: 'Bearer B' }, query: { id: noteId },
-    body: { title: 'Updated by B', body: 'synthetic changed' } }, updateResponse);
-  assert.equal(updateResponse.statusCode, 200);
-  assert.equal(rows[0].owner_id, ownerA);
-  assert.equal(rows[0].title, 'Updated by B');
+  const spoofedUpdate = makeResponse();
+  await handlers.item({ method: 'PUT', headers: { authorization: 'Bearer A' }, query: { id: noteAId },
+    body: { title: 'spoof', body: 'synthetic forbidden', owner_id: ownerB } }, spoofedUpdate);
+  assert.equal(spoofedUpdate.statusCode, 400);
+  assert.equal(rows.find(row => row.id === noteAId).owner_id, ownerA);
 
-  const deleteResponse = makeResponse();
-  await handlers.item({ method: 'DELETE', headers: { authorization: 'Bearer B' }, query: { id: noteId } }, deleteResponse);
-  assert.equal(deleteResponse.statusCode, 200);
-  const deletedRead = makeResponse();
-  await handlers.item({ method: 'GET', headers: { authorization: 'Bearer A' }, query: { id: noteId } }, deletedRead);
-  assert.equal(deletedRead.statusCode, 404);
-  assert.deepEqual(deletedRead.body, { error: 'NOTE_NOT_FOUND' });
+  const readA = makeResponse();
+  await handlers.item({ method: 'GET', headers: { authorization: 'Bearer A' }, query: { id: noteAId } }, readA);
+  assert.equal(readA.statusCode, 200);
+  assert.deepEqual(readA.body, { id: noteAId, title: 'A note', body: 'synthetic A body' });
+  const updateA = makeResponse();
+  await handlers.item({ method: 'PUT', headers: { authorization: 'Bearer A' }, query: { id: noteAId },
+    body: { title: 'A updated note', body: 'synthetic A updated body' } }, updateA);
+  assert.equal(updateA.statusCode, 200);
+  assert.equal(rows.find(row => row.id === noteAId).owner_id, ownerA);
+  assert.equal(updateA.body.title, 'A updated note');
+  const deleteA = makeResponse();
+  await handlers.item({ method: 'DELETE', headers: { authorization: 'Bearer A' }, query: { id: noteAId } }, deleteA);
+  assert.equal(deleteA.statusCode, 200);
+  const deletedReadA = makeResponse();
+  await handlers.item({ method: 'GET', headers: { authorization: 'Bearer A' }, query: { id: noteAId } }, deletedReadA);
+  assert.equal(deletedReadA.statusCode, 404);
+
+  const readB = makeResponse();
+  await handlers.item({ method: 'GET', headers: { authorization: 'Bearer B' }, query: { id: noteBId } }, readB);
+  assert.equal(readB.statusCode, 200);
+  assert.deepEqual(readB.body, { id: noteBId, title: 'B note', body: 'synthetic B body' });
+  const updateB = makeResponse();
+  await handlers.item({ method: 'PUT', headers: { authorization: 'Bearer B' }, query: { id: noteBId },
+    body: { title: 'B updated note', body: 'synthetic B updated body' } }, updateB);
+  assert.equal(updateB.statusCode, 200);
+  assert.equal(rows.find(row => row.id === noteBId).owner_id, ownerB);
+  const deleteB = makeResponse();
+  await handlers.item({ method: 'DELETE', headers: { authorization: 'Bearer B' }, query: { id: noteBId } }, deleteB);
+  assert.equal(deleteB.statusCode, 200);
 });
 
 
