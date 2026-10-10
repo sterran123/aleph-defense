@@ -1,25 +1,40 @@
-# BYTE BACK 방어전 시작 틀 R5
+# BYTE BACK 방어전 · 2단계
 
-이 저장소는 1단계에서 학생 본인이 GitHub 저장소와 Vercel 배포를 만드는 출발점입니다. 포함된 메모 네 건은 가상 자료입니다. 실제 학생 자료, 토큰, 비밀키를 넣지 마세요.
+이 저장소는 1단계에서 만든 같은 자료실을 이어서 개발합니다. 데이터는 모두 실습용 가상 자료입니다. 실제 개인정보, 비밀번호, 토큰, 비밀 키를 넣지 마세요.
 
-## 학생이 하는 일: 세 걸음
+## 2단계 데이터 흐름
 
-1. GitHub 계정을 만듭니다.
-2. 방어전 1단계 카드의 **Deploy** 버튼을 누릅니다. Vercel에 GitHub로 로그인하고, 새 저장소가 **본인 계정의 Public 저장소**인지 확인한 뒤 Deploy를 누릅니다.
-3. 배포가 끝나면 화면에 나온 `https://…vercel.app` 주소를 방어전 1단계 카드에 붙여넣고 제출합니다. 저장소 주소나 설정 파일은 적지 않습니다.
+- 가상 메모는 Supabase의 `public.vault_notes` 테이블에 저장됩니다. `owner_id`는 `uuid` 칸으로 미리 두되, `auth.users` 외래키는 만들지 않습니다.
+- 테이블에는 RLS가 켜져 있고 `anon`·`authenticated` 역할에는 읽기 권한이 없습니다. 서버 함수만 `SUPABASE_SECRET_KEY`로 읽습니다.
+- 화면은 `/api/notes` 서버 함수에서 자료를 받습니다. 이 API는 3단계 인증이 추가되기 전까지 공개 주소이며, 비로그인 방문자도 가상 메모를 요청할 수 있습니다. 따라서 이 단계에서는 가상 자료만 사용합니다.
+- `data.json`과 `public/data.json`은 최신 저장소와 새 정적 배포물에서 제거했습니다. 빌드는 이를 다시 만들지 않고, Vercel 배포의 `/aleph.json`은 계속 생성합니다.
 
-배포가 끝나면 `/`에서 점령된 가상 자료실을 볼 수 있습니다. `/data.json`에는 같은 가상 메모가 공개됩니다. 이 공개 상태를 확인하는 것이 1단계의 출발점입니다. 1단계 접수와 심판 판정은 포털에서 확인합니다.
+## Supabase와 Vercel 설정
 
-## 시작 틀의 자동 처리
+1. Supabase SQL Editor에서 `supabase/migrations/20261010_create_vault_notes.sql`을 실행합니다. 그다음 Supabase 프로젝트에 가상 자료 네 건을 입력합니다. 자료 문장은 공개 저장소에 넣지 않습니다.
+2. Vercel 프로젝트의 Environment Variables에 `SUPABASE_URL`과 `SUPABASE_SECRET_KEY`를 **서버 환경변수로만** 설정하고 Production 배포를 다시 만듭니다. `SUPABASE_SECRET_KEY`를 브라우저 코드, 응답, 로그, Git에 넣지 마세요. 설정 값 자체도 저장소에 기록하지 않습니다.
+3. 화면에 네 카드가 보이는지 확인합니다. `/api/notes`는 아직 공개되어 있다는 점을 기억하세요. 로그인과 사용자별 권한은 다음 단계에서 추가합니다.
 
-`vercel.json`은 정적 결과물 `public`을 배포합니다. 빌드 명령 `npm run build`는 Vercel이 제공하는 GitHub 저장소 소유자·이름, 커밋 SHA, 배포 URL을 검증하고 `public/aleph.json`을 생성합니다. 이 값이 없으면 빌드가 실패하므로, 성공한 것처럼 빈 주소를 내보내지 않습니다. `aleph.json`의 내용만으로 저장소 소유권이나 방어 성공을 인정하지 않습니다. 심판이 공개 저장소의 실제 커밋과 배포된 자료를 따로 대조해야 합니다.
+## 제출 전 점검
 
-`aleph.config.json`의 `repoUrl`과 `publicAppUrl`은 이전 제출 묶음 방식의 자리표시자입니다. 1단계에서는 학생이 편집하지 않습니다. 2단계 이후 코딩 도구가 필요한 설정과 보호 기능을 단계별로 작성합니다. `npm run bundle`과 `bundle-notes.json`도 1단계의 세 걸음에는 포함되지 않습니다.
+- `https://<배포주소>/data.json`은 404여야 합니다.
+- `https://<배포주소>/api/notes`는 이 단계에서는 공개 API로 가상 자료를 반환합니다. 응답 본문이나 자료 문장을 제출 기록·로그에 복사하지 마세요.
+- `https://<배포주소>/aleph.json`이 열리고 배포 단계가 2인지 확인합니다.
+- 첫 화면 응답에 `X-Content-Type-Options: nosniff` 헤더가 있는지 확인합니다.
+- 최신 GitHub 파일과 새 정적 배포물에서 이전 공개 자료의 문장들이 나오지 않는지 로컬에서 점검합니다. 검색용 문장 목록은 로컬에만 두고 커밋하지 않습니다.
+- 기존 공개 Git 커밋과 과거 Vercel 배포는 남아 있을 수 있습니다. 최신 파일에서 제거해도 과거 공개 이력이 지워지는 것은 아니며, 이전 노출이 해소됐다고 쓰지 마세요. 기존 자료는 가상 연습 자료뿐입니다.
 
-로컬에서 가상 화면만 확인할 때는 `npm run build -- --local`을 사용합니다. 로컬 실행은 Vercel 배포나 심판 접수를 증명하지 않습니다. 저장소의 `src/attack-check.mjs`는 실제 배포가 된 뒤 `/data.json`을 비로그인으로 요청해 공개 가상 메모의 확인 표시를 읽습니다.
+## 로컬 확인
 
-## 다음 단계의 코딩 도구에 전달할 규칙
+```sh
+npm ci
+npm run test:r5
+npm run test:package
+npm run build -- --local
+```
 
-[AGENTS.md](AGENTS.md)를 먼저 읽히고 한 번에 한 제작 단위만 요청하세요. 2단계부터는 자료 보호를 구현할 때 `public/data.json`을 복사하는 1단계 빌드 흐름도 함께 바꿔야 합니다. 3단계 이후의 로그인, 허용 경로, 5단계의 원본 API 주소, 6단계 이후 정책 규칙은 해당 단계 원고와 계약에 맞춰 추가합니다. 비밀번호·토큰·서버 전용 키·실제 학생 기록을 코드, Git, 제출 묶음에 넣지 않습니다.
+로컬 빌드와 테스트는 실제 Vercel 배포나 심판 판정을 증명하지 않습니다. 배포 후 `src/attack-check.mjs`는 정적 파일 상태, 공개 API의 상태와 개수, `/aleph.json`, 보안 헤더를 확인하되 메모 본문이나 비밀값은 기록하지 않습니다.
 
-`src/decider.mjs`와 `src/detect.mjs`의 로컬 시험은 반 엔진이나 운영 심판의 결과가 아닙니다. 1단계 이후 제출 묶음 계약 `aleph.defense.submission.v2`는 `scripts/bundle.mjs`에 남아 있으며, 코딩 도구가 해당 단계의 최신 배포 주소와 Git 원격을 맞춘 뒤 사용합니다.
+## 공통 안전 규칙
+
+[AGENTS.md](AGENTS.md)를 먼저 읽고 한 번에 한 제작 단위만 변경하세요. 비밀번호·토큰·서버 전용 키·기기 개인키·실제 개인정보는 코드, Git, 로그, 답변, 제출 묶음에 넣지 않습니다. `src/decider.mjs`와 `src/detect.mjs`의 로컬 시험 결과는 운영 심판 결과가 아닙니다. 제출 묶음 계약은 `scripts/bundle.mjs`를 따르며, `bundle-notes.json`과 생성된 `artifacts/submission.json`은 커밋하지 않습니다.
