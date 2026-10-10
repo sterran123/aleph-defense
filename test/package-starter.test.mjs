@@ -11,7 +11,7 @@ test('패키징 함수 기준표는 시작 틀의 실제 API와 일치한다', a
     .map(name => join('api', name).replaceAll('\\', '/')).sort();
   assert.equal(baseline.version, 1);
   assert.equal(baseline.starter, 'ChoiTimo/aleph-defense-starter');
-  assert.deepEqual(baseline.functions, []);
+  assert.deepEqual(baseline.functions, ['api/notes.js']);
   assert.deepEqual(baseline.allowedNew, ['api/ai.js', 'api/threat-intel.js']);
   assert.deepEqual(actual, [...baseline.functions, ...baseline.allowedNew].sort());
 });
@@ -29,6 +29,32 @@ test('미구현 서버 뼈대는 성공이나 로그인 통과로 가장하지 �
     assert.equal(status, 501);
     assert.equal(headers.get('cache-control'), 'no-store');
     assert.match(body.error, /NOT_IMPLEMENTED$/u);
+  }
+});
+
+test('notes API fails closed when server-only Supabase settings are absent', async () => {
+  const originalUrl = process.env.SUPABASE_URL;
+  const originalSecret = process.env.SUPABASE_SECRET_KEY;
+  delete process.env.SUPABASE_URL;
+  delete process.env.SUPABASE_SECRET_KEY;
+  try {
+    const { default: handler } = await import('../api/notes.js');
+    const headers = new Map();
+    let status;
+    let body;
+    await handler({ method: 'GET' }, {
+      setHeader: (key, value) => headers.set(key.toLowerCase(), value),
+      status: value => { status = value; return { json: value => { body = value; } }; },
+    });
+    assert.equal(status, 503);
+    assert.equal(headers.get('cache-control'), 'no-store');
+    assert.equal(headers.get('x-content-type-options'), 'nosniff');
+    assert.deepEqual(body, { error: 'SERVICE_UNAVAILABLE' });
+  } finally {
+    if (originalUrl === undefined) delete process.env.SUPABASE_URL;
+    else process.env.SUPABASE_URL = originalUrl;
+    if (originalSecret === undefined) delete process.env.SUPABASE_SECRET_KEY;
+    else process.env.SUPABASE_SECRET_KEY = originalSecret;
   }
 });
 
