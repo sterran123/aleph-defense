@@ -79,10 +79,12 @@ export function createNotesHandlers({ supabase, verifyLogin } = {}) {
       const id = input.id ?? randomUUID();
       const { data, error } = await supabase.from('vault_notes')
         .insert({ id, owner_id: identity.userId, title: input.title, content: input.body })
-        .select('id')
+        .select('id,owner_id')
         .single();
       if (error?.code === '23505') return response.status(409).json({ error: 'NOTE_CONFLICT' });
-      if (error || data?.id !== id) return response.status(503).json({ error: 'DATA_UNAVAILABLE' });
+      if (error || data?.id !== id || data?.owner_id !== identity.userId) {
+        return response.status(503).json({ error: 'DATA_UNAVAILABLE' });
+      }
       return response.status(201).json({ id });
     } catch {
       return response.status(503).json({ error: 'DATA_UNAVAILABLE' });
@@ -106,11 +108,14 @@ export function createNotesHandlers({ supabase, verifyLogin } = {}) {
     try {
       if (method === 'GET') {
         const { data, error } = await supabase.from('vault_notes')
-          .select('id,title,content')
+          .select('id,title,content,owner_id')
           .eq('id', id)
+          .eq('owner_id', identity.userId)
           .maybeSingle();
         if (error) return response.status(503).json({ error: 'DATA_UNAVAILABLE' });
-        if (!data) return response.status(404).json({ error: 'NOTE_NOT_FOUND' });
+        if (!data || data.owner_id !== identity.userId) {
+          return response.status(404).json({ error: 'NOTE_NOT_FOUND' });
+        }
         return response.status(200).json(asNote(data));
       }
 
@@ -120,20 +125,26 @@ export function createNotesHandlers({ supabase, verifyLogin } = {}) {
         const { data, error } = await supabase.from('vault_notes')
           .update({ title: input.title, content: input.body })
           .eq('id', id)
-          .select('id,title,content')
+          .eq('owner_id', identity.userId)
+          .select('id,title,content,owner_id')
           .maybeSingle();
         if (error) return response.status(503).json({ error: 'DATA_UNAVAILABLE' });
-        if (!data) return response.status(404).json({ error: 'NOTE_NOT_FOUND' });
+        if (!data || data.owner_id !== identity.userId) {
+          return response.status(404).json({ error: 'NOTE_NOT_FOUND' });
+        }
         return response.status(200).json(asNote(data));
       }
 
       const { data, error } = await supabase.from('vault_notes')
         .delete()
         .eq('id', id)
-        .select('id')
+        .eq('owner_id', identity.userId)
+        .select('id,owner_id')
         .maybeSingle();
       if (error) return response.status(503).json({ error: 'DATA_UNAVAILABLE' });
-      if (!data) return response.status(404).json({ error: 'NOTE_NOT_FOUND' });
+      if (!data || data.owner_id !== identity.userId) {
+        return response.status(404).json({ error: 'NOTE_NOT_FOUND' });
+      }
       return response.status(200).json({ id: data.id });
     } catch {
       return response.status(503).json({ error: 'DATA_UNAVAILABLE' });
