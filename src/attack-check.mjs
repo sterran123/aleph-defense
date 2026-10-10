@@ -1,7 +1,6 @@
-// The student changes this check as each stage adds an attack to the same app.
-// Never return tokens, private keys, real names, or note bodies.
+// Record only status, metadata, and counts. Never return tokens, private keys, or note bodies.
 export async function runAttackChecks(config) {
-  if (config.step !== 1) throw new Error('이 단계의 공격 점검을 src/attack-check.mjs에 구현해 주세요.');
+  if (config.step !== 2) throw new Error('2단계 공격 점검은 배포 주소와 step 2가 필요합니다.');
   let app;
   try {
     app = new URL(config.publicAppUrl);
@@ -12,20 +11,47 @@ export async function runAttackChecks(config) {
       || app.pathname !== '/' || app.hostname.endsWith('.example')) {
     throw new Error('aleph.config.json의 실제 배포 주소를 먼저 넣어 주세요.');
   }
-  if (typeof config.sampleMarker !== 'string' || !config.sampleMarker) throw new Error('가상 메모의 확인 표시를 넣어 주세요.');
-  const response = await fetch(new URL('/data.json', app), {
-    redirect: 'error', signal: AbortSignal.timeout(10000),
-  });
-  let visible = false;
-  if (response.ok) {
+
+  const request = async (pathname) => {
     try {
-      const data = await response.json();
-      visible = data?.sampleMarker === config.sampleMarker && Array.isArray(data.notes)
-        && data.notes.length > 0;
+      return await fetch(new URL(pathname, app), {
+        redirect: 'error', signal: AbortSignal.timeout(10000),
+      });
     } catch {
-      // A non-JSON response is a failed check, not a successful deployment.
+      return null;
+    }
+  };
+  const [staticData, publicApi, identityResponse, homepage] = await Promise.all([
+    request('/data.json'), request('/api/notes'), request('/aleph.json'), request('/'),
+  ]);
+
+  let recordCount = 'unavailable';
+  if (publicApi?.ok) {
+    try {
+      const payload = await publicApi.json();
+      recordCount = Array.isArray(payload?.notes) ? payload.notes.length : 0;
+    } catch {
+      recordCount = 0;
     }
   }
-  return [{ attackId: 'anonymous_note_read', expected: '비로그인 화면에서 가상 메모를 확인',
-    observed: visible ? '비로그인 요청에서 공개 가상 메모 확인 표시가 보임' : `비로그인 요청에서 확인 표시가 보이지 않음 (HTTP ${response.status})` }];
+  let identityStep = 'unavailable';
+  if (identityResponse?.ok) {
+    try {
+      const identity = await identityResponse.json();
+      if (identity?.schema === 'aleph.defense.deployment.v1') identityStep = identity.step;
+    } catch {
+      identityStep = 'invalid';
+    }
+  }
+  const nosniff = homepage?.headers.get('x-content-type-options')?.toLowerCase() || 'missing';
+  return [
+    { attackId: 'static_notes_file', expected: '/data.json is absent from the deployed static files',
+      observed: `HTTP ${staticData?.status ?? 0}` },
+    { attackId: 'public_notes_api', expected: 'Stage 2 API remains public until authentication is added',
+      observed: `HTTP ${publicApi?.status ?? 0}; record count ${recordCount}` },
+    { attackId: 'deployment_identity', expected: 'The deployment identity reports step 2',
+      observed: `step ${identityStep}` },
+    { attackId: 'nosniff_header', expected: 'The first-page response includes X-Content-Type-Options: nosniff',
+      observed: nosniff },
+  ];
 }
