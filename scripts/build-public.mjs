@@ -6,17 +6,27 @@ const root = resolve(import.meta.dirname, '..');
 const publicDir = resolve(root, 'public');
 const stalePublicData = resolve(publicDir, 'data.json');
 const identityFile = resolve(publicDir, 'aleph.json');
+const authConfigFile = resolve(publicDir, 'auth-config.json');
 const config = JSON.parse(await readFile(resolve(root, 'aleph.config.json'), 'utf8'));
+const localBuild = process.argv.includes('--local');
 if (!Number.isInteger(config.step) || config.step < 1 || config.step > 12) {
   throw new Error('aleph.config.json의 step을 확인하세요.');
 }
 await mkdir(publicDir, { recursive: true });
 await rm(stalePublicData, { force: true });
 console.log('공개 정적 자료 파일이 배포에 포함되지 않도록 확인했습니다.');
-if (!process.argv.includes('--local')) {
+if (!localBuild) {
+  const supabaseUrl = process.env.SUPABASE_URL;
+  const publishableKey = process.env.SUPABASE_PUBLISHABLE_KEY;
+  if (typeof supabaseUrl !== 'string' || !/^https:\/\/[a-z0-9-]+\.supabase\.co$/iu.test(supabaseUrl)
+      || typeof publishableKey !== 'string' || !/^sb_publishable_[A-Za-z0-9_-]{20,200}$/u.test(publishableKey)) {
+    throw new Error('Supabase Auth의 공개 빌드 설정을 확인하세요.');
+  }
+  await writeFile(authConfigFile, `${JSON.stringify({ supabaseUrl, publishableKey })}\n`, 'utf8');
   const identity = deploymentIdentity(process.env, config);
   await writeFile(identityFile, `${JSON.stringify(identity, null, 2)}\n`, 'utf8');
   console.log('배포 저장소·커밋·주소를 public/aleph.json에 기록했습니다.');
 } else {
   await rm(identityFile, { force: true });
+  await rm(authConfigFile, { force: true });
 }
