@@ -1,6 +1,6 @@
 // Record only status and metadata. Never return tokens, private keys, or note bodies.
 export async function runAttackChecks(config) {
-  if (config.step !== 3) throw new Error('3단계 공격 점검은 배포 주소와 step 3이 필요합니다.');
+  if (!Number.isInteger(config.step) || config.step < 3 || config.step > 12) throw new Error('3~12단계 공격 점검은 배포 주소와 유효한 단계 설정이 필요합니다.');
   let app;
   try {
     app = new URL(config.publicAppUrl);
@@ -56,7 +56,7 @@ export async function runAttackChecks(config) {
       observed: `HTTP ${anonymousApi?.status ?? 0}; JSON error ${anonymousJsonError}` },
     { attackId: 'invalid_bearer_token', expected: 'Malformed bearer tokens return JSON 401 or 403',
       observed: `HTTP ${invalidTokenApi?.status ?? 0}; JSON error ${invalidTokenJsonError}` },
-    { attackId: 'deployment_identity', expected: 'The deployment identity reports step 3',
+    { attackId: 'deployment_identity', expected: `The deployment identity reports step ${config.step}`,
       observed: `step ${identityStep}` },
     { attackId: 'nosniff_header', expected: 'The first-page response includes X-Content-Type-Options: nosniff',
       observed: nosniff },
