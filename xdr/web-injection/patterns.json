@@ -1,0 +1,36 @@
+{
+  "schema": "aleph.xdr.patterns.v1",
+  "moduleKey": "web-injection",
+  "framework": "MITRE ATT&CK",
+  "technique": "T1190",
+  "patterns": [
+    {
+      "id": "repeated_sql_input_signal",
+      "name": "반복된 SQL 입력 신호",
+      "condition": "T1190 경보에서 SQL 구문·합성 SQL 표식이 요청 설명 또는 인자에 있고, 수준 10 이상·8회 이상 반복됨",
+      "confidence": 0.94,
+      "rationale": "반복되는 데이터베이스 구문 표시는 공개 웹 앱 입력을 악용하려는 신호이며, 합성 표식만 탐지합니다."
+    },
+    {
+      "id": "repeated_script_insertion_signal",
+      "name": "반복된 스크립트 삽입 신호",
+      "condition": "T1190 경보에서 스크립트 삽입 표식이 있고, 수준 10 이상·8회 이상 반복됨",
+      "confidence": 0.94,
+      "rationale": "반복되는 스크립트 삽입 표시는 웹 입력 악용 시도에 대한 높은 확신의 근거입니다."
+    },
+    {
+      "id": "repeated_path_traversal_signal",
+      "name": "반복된 경로 이탈 신호",
+      "condition": "T1190 경보에서 경로 이탈 표식이 있고, 수준 10 이상·8회 이상 반복됨",
+      "confidence": 0.94,
+      "rationale": "반복되는 경로 거슬러 오르기 표시는 공개 앱의 파일 경로 처리를 겨냥하는 신호입니다."
+    },
+    {
+      "id": "repeated_control_separator_signal",
+      "name": "반복된 입력 구분자 신호",
+      "condition": "T1190 경보에서 명령 구분자 표식이 명시되고, 수준 10 이상·8회 이상 반복됨",
+      "confidence": 0.92,
+      "rationale": "실습 경보가 반복 입력 구분자 표식을 명시하므로 모호한 단어 검색과 구분해 처리합니다."
+    }
+  ]
+}
