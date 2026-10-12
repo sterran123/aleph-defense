@@ -53,3 +53,29 @@ npm run bundle
 ## 공통 안전 규칙
 
 [AGENTS.md](AGENTS.md)를 먼저 읽고 한 번에 한 제작 단위만 변경하세요. 비밀번호·토큰·서버 전용 키·기기 개인키·실제 개인정보는 코드, Git, 로그, 답변, 제출 묶음에 넣지 않습니다. `src/decider.mjs`와 `src/detect.mjs`의 로컬 시험 결과는 운영 심판 결과가 아닙니다. 제출 묶음 계약은 `scripts/bundle.mjs`를 따르며, `bundle-notes.json`과 생성된 `artifacts/submission.json`은 커밋하지 않습니다.
+
+
+## 보너스 작전 XDR-01 · 무차별 로그인
+
+- `xdr/brute-force/read-alerts.mjs`는 경보에서 시각·출발 주소·계정·규칙 수준·설명만 읽고, 설명 안의 bearer 값·토큰·비밀번호처럼 보이는 값을 가립니다. 원본 경보는 수정하지 않습니다.
+- `xdr/brute-force/decide.mjs`는 MITRE ATT&CK T1110의 짧은 시간 고빈도 실패와 계정 분사 신호만 높은 확신으로 차단합니다. 근거가 약한 로그인 실패는 알림, 정상 경보는 기록으로 남깁니다. 이 파일은 import·파일 I/O·네트워크 없이 독립 실행됩니다.
+- `xdr/brute-force/respond.mjs`는 차단 판정에만 15분 만료와 근거 경보 ID가 있는 추가 거부 규칙을 만듭니다. 기존 규칙을 유지하고 합성 문서용 IP 대역만 대상으로 합니다. 알림은 비밀값을 가린 한 줄 JSON으로 `xdr/alerts.log`에 덧붙입니다.
+
+로컬 재실행:
+
+```sh
+npm run xdr:run -- brute-force
+node xdr/brute-force/respond.mjs
+```
+
+첫 명령은 `xdr/brute-force/result.json`에 판정과 건수를 기록하고, 두 번째 명령은 `xdr/deny-rules.json`에 추가 규칙을 병합합니다. 입력은 `xdr/fixtures/brute-force.json`의 합성 경보뿐입니다.
+
+
+
+
+
+
+
+
+
+
