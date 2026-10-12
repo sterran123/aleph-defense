@@ -1,0 +1,105 @@
+{
+  "schema": "aleph.xdr.deny-rules.v1",
+  "rules": [
+    {
+      "id": "xdr.brute-force.bf-01",
+      "effect": "deny",
+      "sourceAddress": "203.0.113.10",
+      "createdAt": "2026-10-12T01:39:05.703Z",
+      "expiresAt": "2026-10-12T01:54:05.703Z",
+      "evidenceAlertId": "bf-01",
+      "reason": "rapid_same_source_failures",
+      "source": "xdr.brute-force"
+    },
+    {
+      "id": "xdr.brute-force.bf-02",
+      "effect": "deny",
+      "sourceAddress": "203.0.113.10",
+      "createdAt": "2026-10-12T01:39:05.703Z",
+      "expiresAt": "2026-10-12T01:54:05.703Z",
+      "evidenceAlertId": "bf-02",
+      "reason": "password_spray_multiple_accounts",
+      "source": "xdr.brute-force"
+    },
+    {
+      "id": "xdr.brute-force.bf-03",
+      "effect": "deny",
+      "sourceAddress": "198.51.100.20",
+      "createdAt": "2026-10-12T01:39:05.703Z",
+      "expiresAt": "2026-10-12T01:54:05.703Z",
+      "evidenceAlertId": "bf-03",
+      "reason": "rapid_same_source_failures",
+      "source": "xdr.brute-force"
+    },
+    {
+      "id": "xdr.brute-force.bf-04",
+      "effect": "deny",
+      "sourceAddress": "192.0.2.30",
+      "createdAt": "2026-10-12T01:39:05.703Z",
+      "expiresAt": "2026-10-12T01:54:05.703Z",
+      "evidenceAlertId": "bf-04",
+      "reason": "rapid_same_source_failures",
+      "source": "xdr.brute-force"
+    },
+    {
+      "id": "xdr.brute-force.bf-05",
+      "effect": "deny",
+      "sourceAddress": "203.0.113.21",
+      "createdAt": "2026-10-12T01:39:05.703Z",
+      "expiresAt": "2026-10-12T01:54:05.703Z",
+      "evidenceAlertId": "bf-05",
+      "reason": "password_spray_multiple_accounts",
+      "source": "xdr.brute-force"
+    },
+    {
+      "id": "xdr.brute-force.bf-06",
+      "effect": "deny",
+      "sourceAddress": "198.51.100.44",
+      "createdAt": "2026-10-12T01:39:05.703Z",
+      "expiresAt": "2026-10-12T01:54:05.703Z",
+      "evidenceAlertId": "bf-06",
+      "reason": "rapid_same_source_failures",
+      "source": "xdr.brute-force"
+    },
+    {
+      "id": "xdr.brute-force.bf-07",
+      "effect": "deny",
+      "sourceAddress": "203.0.113.15",
+      "createdAt": "2026-10-12T01:39:05.703Z",
+      "expiresAt": "2026-10-12T01:54:05.703Z",
+      "evidenceAlertId": "bf-07",
+      "reason": "rapid_same_source_failures",
+      "source": "xdr.brute-force"
+    },
+    {
+      "id": "xdr.brute-force.bf-08",
+      "effect": "deny",
+      "sourceAddress": "192.0.2.18",
+      "createdAt": "2026-10-12T01:39:05.703Z",
+      "expiresAt": "2026-10-12T01:54:05.703Z",
+      "evidenceAlertId": "bf-08",
+      "reason": "rapid_same_source_failures",
+      "source": "xdr.brute-force"
+    },
+    {
+      "id": "xdr.brute-force.bf-09",
+      "effect": "deny",
+      "sourceAddress": "198.51.100.8",
+      "createdAt": "2026-10-12T01:39:05.703Z",
+      "expiresAt": "2026-10-12T01:54:05.703Z",
+      "evidenceAlertId": "bf-09",
+      "reason": "password_spray_multiple_accounts",
+      "source": "xdr.brute-force"
+    },
+    {
+      "id": "xdr.brute-force.bf-10",
+      "effect": "deny",
+      "sourceAddress": "203.0.113.40",
+      "createdAt": "2026-10-12T01:39:05.703Z",
+      "expiresAt": "2026-10-12T01:54:05.703Z",
+      "evidenceAlertId": "bf-10",
+      "reason": "rapid_same_source_failures",
+      "source": "xdr.brute-force"
+    }
+  ]
+}
