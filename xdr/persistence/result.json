@@ -1,0 +1,155 @@
+{
+  "schema": "aleph.xdr.result.v1",
+  "moduleKey": "persistence",
+  "decisions": [
+    {
+      "alertId": "ps-01",
+      "action": "block",
+      "confidence": 0.96,
+      "reason": "unsigned_service_from_temp_path"
+    },
+    {
+      "alertId": "ps-02",
+      "action": "block",
+      "confidence": 0.95,
+      "reason": "unknown_task_outside_hours"
+    },
+    {
+      "alertId": "ps-03",
+      "action": "block",
+      "confidence": 0.92,
+      "reason": "unlisted_startup_program"
+    },
+    {
+      "alertId": "ps-04",
+      "action": "block",
+      "confidence": 0.95,
+      "reason": "repeated_unsigned_service_registration"
+    },
+    {
+      "alertId": "ps-05",
+      "action": "block",
+      "confidence": 0.94,
+      "reason": "random_task_from_temp_path"
+    },
+    {
+      "alertId": "ps-06",
+      "action": "block",
+      "confidence": 0.96,
+      "reason": "unsigned_service_binary_change"
+    },
+    {
+      "alertId": "ps-07",
+      "action": "block",
+      "confidence": 0.97,
+      "reason": "paired_startup_and_task_path"
+    },
+    {
+      "alertId": "ps-08",
+      "action": "block",
+      "confidence": 0.95,
+      "reason": "unknown_service_survives_restart"
+    },
+    {
+      "alertId": "ps-09",
+      "action": "alert",
+      "confidence": 0.62,
+      "reason": "weak_persistence_change_review"
+    },
+    {
+      "alertId": "ps-10",
+      "action": "alert",
+      "confidence": 0.62,
+      "reason": "weak_persistence_change_review"
+    },
+    {
+      "alertId": "ps-11",
+      "action": "alert",
+      "confidence": 0.62,
+      "reason": "weak_persistence_change_review"
+    },
+    {
+      "alertId": "ps-12",
+      "action": "alert",
+      "confidence": 0.62,
+      "reason": "weak_persistence_change_review"
+    },
+    {
+      "alertId": "ps-13",
+      "action": "alert",
+      "confidence": 0.62,
+      "reason": "weak_persistence_change_review"
+    },
+    {
+      "alertId": "ps-14",
+      "action": "alert",
+      "confidence": 0.62,
+      "reason": "weak_persistence_change_review"
+    },
+    {
+      "alertId": "ps-15",
+      "action": "alert",
+      "confidence": 0.62,
+      "reason": "weak_persistence_change_review"
+    },
+    {
+      "alertId": "ps-16",
+      "action": "alert",
+      "confidence": 0.62,
+      "reason": "weak_persistence_change_review"
+    },
+    {
+      "alertId": "ps-17",
+      "action": "record",
+      "confidence": 0.05,
+      "reason": "insufficient_evidence"
+    },
+    {
+      "alertId": "ps-18",
+      "action": "record",
+      "confidence": 0.05,
+      "reason": "known_routine_activity"
+    },
+    {
+      "alertId": "ps-19",
+      "action": "record",
+      "confidence": 0.05,
+      "reason": "known_routine_activity"
+    },
+    {
+      "alertId": "ps-20",
+      "action": "record",
+      "confidence": 0.05,
+      "reason": "insufficient_evidence"
+    },
+    {
+      "alertId": "ps-21",
+      "action": "record",
+      "confidence": 0.05,
+      "reason": "insufficient_evidence"
+    },
+    {
+      "alertId": "ps-22",
+      "action": "record",
+      "confidence": 0.05,
+      "reason": "insufficient_evidence"
+    },
+    {
+      "alertId": "ps-23",
+      "action": "record",
+      "confidence": 0.05,
+      "reason": "known_routine_activity"
+    },
+    {
+      "alertId": "ps-24",
+      "action": "record",
+      "confidence": 0.05,
+      "reason": "insufficient_evidence"
+    }
+  ],
+  "counts": {
+    "block": 8,
+    "alert": 8,
+    "record": 8
+  }
+}
