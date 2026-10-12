@@ -1,0 +1,29 @@
+{
+  "schema": "aleph.xdr.patterns.v1",
+  "moduleKey": "brute-force",
+  "framework": "MITRE ATT&CK",
+  "technique": "T1110",
+  "patterns": [
+    {
+      "id": "rapid_same_source_failures",
+      "name": "짧은 시간 같은 출발지 로그인 실패 폭주",
+      "condition": "T1110 근거와 로그인 실패 문맥이 있고, 출발지 주소·규칙 수준 10 이상·실패 30건 이상이 함께 확인됨",
+      "confidence": 0.96,
+      "rationale": "T1110의 반복적인 비밀번호 추측과 짧은 구간의 대량 실패는 강한 무차별 대입 신호입니다."
+    },
+    {
+      "id": "high_volume_account_failures",
+      "name": "한 계정에 집중된 고빈도 실패",
+      "condition": "T1110 근거와 로그인 실패 문맥, 동일 계정 출발지 주소, 실패 30건 이상, 성공 징후 없음",
+      "confidence": 0.93,
+      "rationale": "T1110의 계정 대입과 높은 실패량이 함께 있어 정상적인 오타보다 공격 가능성이 높습니다."
+    },
+    {
+      "id": "password_spray_multiple_accounts",
+      "name": "같은 출발지의 다중 계정 비밀번호 대입",
+      "condition": "T1110 근거와 같은 출발지의 반복 실패, 계정 8개 이상 및 같은 비밀번호·계정 순환·규칙적인 반복 같은 분사 신호, 규칙 수준 10 이상",
+      "confidence": 0.95,
+      "rationale": "T1110의 password spraying은 한 출발지에서 여러 계정을 반복 시험하는 형태입니다."
+    }
+  ]
+}
