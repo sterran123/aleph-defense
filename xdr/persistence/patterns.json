@@ -1,0 +1,71 @@
+{
+  "schema": "aleph.xdr.patterns.v1",
+  "moduleKey": "persistence",
+  "framework": "MITRE ATT&CK",
+  "techniques": ["T1543", "T1053"],
+  "patterns": [
+    {
+      "id": "unsigned_service_from_temp_path",
+      "name": "임시 실행 파일을 가리키는 서명 없는 새 서비스",
+      "condition": "T1543 근거와 서명 없는 새 서비스 등록, 임시 경로 실행 파일이 함께 확인됨",
+      "confidence": 0.96,
+      "rationale": "낯선 서비스 등록과 임시 실행 파일이 결합되면 재부팅 뒤에도 남으려는 강한 신호입니다."
+    },
+    {
+      "id": "unknown_task_outside_hours",
+      "name": "수업 시간 밖 임시 프로그램 예약 작업",
+      "condition": "T1053 근거와 처음 보는 예약 작업, 임시 경로 프로그램, 수업 시간 밖 실행이 함께 확인됨",
+      "confidence": 0.95,
+      "rationale": "낯선 예약 작업이 임시 프로그램을 비정상 시각에 실행하는 것은 지속성 확보의 강한 신호입니다."
+    },
+    {
+      "id": "unlisted_startup_program",
+      "name": "목록에 없는 시작 프로그램",
+      "condition": "T1543 근거와 시작 폴더에 평소 목록에 없는 프로그램이 추가됨",
+      "confidence": 0.92,
+      "rationale": "새 시작 항목이 알려진 목록에 없으면 재시작 뒤 자동 실행될 수 있습니다."
+    },
+    {
+      "id": "repeated_unsigned_service_registration",
+      "name": "반복된 서명 없는 서비스 등록",
+      "condition": "T1543 근거와 원격 주소에서 서명 없는 서비스 등록이 여러 건 반복됨",
+      "confidence": 0.95,
+      "rationale": "반복 등록은 우발적인 설정 변경보다 지속성 확보 시도일 가능성이 높습니다."
+    },
+    {
+      "id": "random_task_from_temp_path",
+      "name": "임시 실행 파일을 부르는 임의 이름 예약 작업",
+      "condition": "T1053 근거와 임의 이름의 예약 작업, 임시 경로 실행 파일이 함께 확인됨",
+      "confidence": 0.94,
+      "rationale": "무작위 작업명과 임시 실행 경로가 결합된 예약 작업은 숨김 지속성 신호입니다."
+    },
+    {
+      "id": "unsigned_service_binary_change",
+      "name": "서명 없는 서비스 실행 파일 변경",
+      "condition": "T1543 근거와 서비스 실행 파일 변경, 서명 부재가 함께 확인됨",
+      "confidence": 0.96,
+      "rationale": "서비스 바이너리를 서명 없이 바꾸면 기존 서비스에 악성 실행을 숨길 수 있습니다."
+    },
+    {
+      "id": "paired_startup_and_task_path",
+      "name": "같은 임시 파일을 가리키는 시작 항목과 예약 작업",
+      "condition": "T1543 또는 T1053 근거와 시작 프로그램·예약 작업이 같은 임시 파일을 가리킴",
+      "confidence": 0.97,
+      "rationale": "서로 다른 자동 실행 경로가 같은 임시 파일을 호출하면 지속성 근거가 겹칩니다."
+    },
+    {
+      "id": "unknown_service_survives_restart",
+      "name": "재시작 뒤에도 남도록 등록된 낯선 서비스",
+      "condition": "T1543 근거와 평소 목록에 없는 서비스가 다시 켜도 남도록 등록됨",
+      "confidence": 0.95,
+      "rationale": "목록에 없는 서비스를 재시작 뒤에도 유지하려는 명시적 등록은 강한 지속성 신호입니다."
+    },
+    {
+      "id": "weak_persistence_change_review",
+      "name": "단일·불완전한 지속성 변경 검토",
+      "condition": "T1543 또는 T1053 근거와 서비스·예약 작업·시작 항목 변경이 있으나 강한 조합은 확인되지 않음",
+      "confidence": 0.62,
+      "rationale": "약한 변경은 자동 차단하지 않고 목록·서명 검토를 위한 알림으로 남깁니다."
+    }
+  ]
+}
