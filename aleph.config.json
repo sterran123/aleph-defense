@@ -1,5 +1,5 @@
 {
-  "step": 5,
+  "step": 6,
   "repoUrl": "https://github.com/sterran123/aleph-defense",
   "publicAppUrl": "https://aleph-defense-three.vercel.app",
   "sampleMarker": "SAMPLE_NOTE_1",
@@ -17,5 +17,7 @@
     "DELETE /api/notes/:id"
   ],
   "originalApiUrl": "https://ufsdwlcxqwasyuhneynz.supabase.co/rest/v1/vault_notes",
-  "restoreRoute": null
+  "restoreRoute": null,
+  "serviceId": "notes",
+  "readPath": "/notes"
 }
