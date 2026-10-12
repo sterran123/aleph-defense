@@ -79,3 +79,31 @@ node xdr/brute-force/respond.mjs
 
 
 
+
+
+## 보너스 작전 XDR-02 · 웹 입력 조작
+
+- `xdr/web-injection/read-alerts.mjs`는 경보의 시각·출발 주소·계정·규칙 수준·설명만 읽고, 민감값처럼 보이는 설명은 가립니다. 원본 경보는 바꾸지 않습니다.
+- `patterns.json`은 MITRE ATT&CK T1190 근거로 반복 SQL 입력, 스크립트 삽입, 경로 이탈 신호와 실습 경보에 명시된 입력 구분자 신호를 기록합니다. 단어 하나만 겹치거나 반복 근거가 약한 경우는 차단하지 않습니다.
+- `decide.mjs`는 T1190, 출발 주소, 규칙 수준 10 이상, 8회 이상 반복, 명시된 신호가 함께 있을 때만 차단합니다. 애매한 T1190 경보는 알림, 충분한 근거가 없는 정상 이벤트는 기록으로 남깁니다. 이 파일은 import·파일 I/O·네트워크 없이 독립 실행됩니다.
+- `respond.mjs`는 차단 판정에만 근거 경보 ID와 15분 만료가 있는 추가 거부 규칙을 만듭니다. 기존 규칙을 유지하며 합성 문서용 IP 대역만 대상으로 합니다. 비밀값을 가린 JSON 한 줄을 공유 `xdr/alerts.log`에 덧붙입니다.
+
+로컬 재실행:
+
+```sh
+npm run xdr:run -- web-injection
+node xdr/web-injection/respond.mjs
+```
+
+시험 경보에서는 `block=8`, `alert=9`, `record=9`이며 정상 이벤트 차단은 없습니다. 첫 명령은 `xdr/web-injection/result.json`을 만들고, 두 번째 명령은 `xdr/deny-rules.json`의 기존 규칙을 보존하면서 추가 규칙을 병합합니다. 입력은 합성 경보뿐입니다.
+
+
+
+
+
+
+
+
+
+
+
