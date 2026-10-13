@@ -1,5 +1,5 @@
 import { routeAudit } from '../../src/notes-api.mjs';
+import { sessionAuth } from '../../src/server-session.mjs';
+import { deviceApproval } from '../../src/server-device-approval.mjs';
 
-export default async function handler(request, response) {
-  return routeAudit(request, response);
-}
+export default sessionAuth.wrap(deviceApproval.guard(routeAudit));

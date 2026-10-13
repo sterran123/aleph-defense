@@ -1,8 +1,5 @@
-import { createOperationsHandler } from '../src/operations-api.mjs';
-import config from '../aleph.config.json' with { type: 'json' };
+import { operations } from '../src/server-operations.mjs';
+import { sessionAuth } from '../src/server-session.mjs';
+import { deviceApproval } from '../src/server-device-approval.mjs';
 
-const operations = createOperationsHandler({ config });
-
-export default async function handler(request, response) {
-  return operations(request, response);
-}
+export default sessionAuth.wrap(deviceApproval.guard(operations));

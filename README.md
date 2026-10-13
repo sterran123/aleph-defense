@@ -1,4 +1,12 @@
-# BYTE BACK 방어전 · 10단계 저장점
+# BYTE BACK 방어전 · 11단계 저장점
+
+## 11단계 저장점 · 나만의 접속 앱을 완성합니다
+
+- `aleph.config.json`은 `step: 11`을 기록하고 `allowedRoutes`에 `GET·POST /api/auth`, `GET·POST /api/device-approval`, `GET /api/notes`를 추가합니다.
+- **설치형 웹앱**: `public/manifest.webmanifest`·`public/app-icon.svg`·`public/service-worker.js`·`public/offline.html`을 추가했습니다. 설치 버튼은 `beforeinstallprompt`가 있을 때만 나타나고, 설치 여부는 기기 승인의 근거가 아닙니다. 오프라인 안내 페이지는 보호 자료와 승인 상태가 서버 확인이 필요하다고만 적습니다. 서비스 워커는 `/api/` 요청을 캐시하지 않습니다.
+- **서버 세션 로그인**: `src/auth-session.mjs`는 이메일·비밀번호 로그인을 서버의 공식 Supabase SDK(`@supabase/supabase-js`)로 처리하고 세션을 `__Host-notes-access`·`__Host-notes-refresh` 쿠키(`HttpOnly; Secure; SameSite=Strict`)에만 둡니다. 응답 JSON에는 토큰을 넣지 않고, 만료된 접근 토큰은 refresh 토큰으로 갱신한 뒤 새 토큰을 다시 검증합니다. 브라우저의 변경 요청은 같은 출처에서만 받습니다. 검증된 Bearer 요청(운영 엔진·심판)은 기존 계약 그대로 통과합니다.
+- **기기 승인**: `src/device-approval.mjs`는 기기 식별자를 `__Host-device-id` 쿠키로만 관리하고 승인 상태를 서버 Supabase 테이블(`sql/step11-device-approval.sql`의 `device_approvals`)에서 읽습니다. `POST /api/device-approval`의 요청 버튼은 `pending` 행만 만들며 권한을 주지 않고, 서버 행이 `approved`일 때만 보호 API를 통과시킵니다. 응답에는 기기 ID 대신 앞 8글자 요청 코드만 보입니다. 승인 전에는 화면에서도 보호 자료와 작전 기록을 표시하지 않습니다. 브라우저 저장소(localStorage·sessionStorage·IndexedDB)에는 기기 키나 토큰을 넣지 않습니다.
+- 로컬 확인: `npm run device:test` 9개, `npm run test:stage3` 6개, `npm run test:stage10` 15개, `npm run test:stage8` 10개, `npm run test:package` 4개, `npm run test:r5` 2개, `npm run operations:test` 통과. 모두 가상·단위 시험이며 실제 엔진 연동, Production 배포 또는 심판 판정의 증거는 아닙니다.
 
 ## 10단계 저장점 · 백업에서 자료실을 되살립니다
 

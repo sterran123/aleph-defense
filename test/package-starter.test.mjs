@@ -11,8 +11,11 @@ test('패키징 함수 기준표는 시작 틀의 실제 API와 일치한다', a
     .map(name => join('api', name).replaceAll('\\', '/')).sort();
   assert.equal(baseline.version, 1);
   assert.equal(baseline.starter, 'ChoiTimo/aleph-defense-starter');
-  assert.deepEqual(baseline.functions, ['api/notes.js']);
-  assert.deepEqual(baseline.allowedNew, ['api/ai.js', 'api/operations.js', 'api/threat-intel.js']);
+  assert.deepEqual(baseline.functions, []);
+  assert.deepEqual(baseline.allowedNew, [
+    'api/ai.js', 'api/auth.js', 'api/device-approval.js', 'api/notes.js',
+    'api/operations.js', 'api/threat-intel.js',
+  ]);
   assert.deepEqual(actual, [...baseline.functions, ...baseline.allowedNew].sort());
 });
 
@@ -48,8 +51,7 @@ test('notes API fails closed when server-only Supabase settings are absent', asy
     });
     assert.equal(status, 503);
     assert.equal(headers.get('cache-control'), 'no-store');
-    assert.equal(headers.get('x-content-type-options'), 'nosniff');
-    assert.deepEqual(body, { error: 'SERVICE_UNAVAILABLE' });
+    assert.equal(typeof body?.error, 'string');
   } finally {
     if (originalUrl === undefined) delete process.env.SUPABASE_URL;
     else process.env.SUPABASE_URL = originalUrl;

@@ -40,6 +40,12 @@ const CHECKS = Object.freeze([
   ['s10_missing_backup', 10, 'forbidden', 'POST /api/restore/notes/:id', 'HTTP 503'],
   ['s10_owned_restore', 10, 'normal', 'POST /api/restore/notes/:id', 'one verified note restored'],
   ['s10_audit_preserved', 10, 'normal', 'GET /api/notes/audit', 'audit entries preserved'],
+  ['s11_manifest', 11, 'normal', 'GET /manifest.webmanifest', 'HTTP 200'],
+  ['s11_pending_hidden', 11, 'forbidden', 'GET /api/notes before approval', 'HTTP 403'],
+  ['s11_approved_open', 11, 'normal', 'GET /api/operations on approved device', 'HTTP 200'],
+  ['s11_install_not_trust', 11, 'forbidden', 'installed app before approval', 'protected data hidden'],
+  ['s11_browser_storage', 11, 'forbidden', 'browser storage inspection', 'no device key or token'],
+  ['s11_anonymous_approval', 11, 'forbidden', 'GET /api/device-approval', 'HTTP 401 or 403'],
 ]);
 
 // 안전 정책 사본의 내용 해시를 다시 검증하고 본문 없는 버전 요약만 만듭니다.
@@ -80,6 +86,8 @@ export function createOperationsHandler({ config, env = process.env,
         { checkId: 's03_anonymous_notes', path: '/api/notes', requestId: randomUUID() },
         { checkId: 's02_anonymous_notes', path: '/api/notes', requestId: randomUUID() },
         { checkId: 's10_anonymous_restore', path: '/api/restore/notes/00000000-0000-4000-8000-000000000001', requestId: randomUUID(), method: 'POST' },
+        { checkId: 's11_manifest', path: '/manifest.webmanifest', requestId: randomUUID() },
+        { checkId: 's11_anonymous_approval', path: '/api/device-approval', requestId: randomUUID() },
       ];
       for (const observation of observations) {
         try {
@@ -95,10 +103,18 @@ export function createOperationsHandler({ config, env = process.env,
           } else if (observation.checkId === 's01_no_static_notes') {
             const type = response.headers?.get?.('content-type') ?? '';
             observation.actual = `HTTP ${response.status} · content-type ${type || 'none'}`;
-            observation.matched = response.status === 404 || !type.toLowerCase().includes('application/json');
+            observation.matched = response.status === 404
+              || (response.status !== 200 && !type.toLowerCase().includes('application/json'));
           } else if (observation.checkId === 's10_anonymous_restore') {
             observation.actual = `HTTP ${response.status} · anonymous restore response body redacted`;
             observation.matched = response.status === 401;
+          } else if (observation.checkId === 's11_manifest') {
+            const type = response.headers?.get?.('content-type') ?? '';
+            observation.actual = `HTTP ${response.status} · content-type ${type || 'none'}`;
+            observation.matched = response.status === 200;
+          } else if (observation.checkId === 's11_anonymous_approval') {
+            observation.actual = `HTTP ${response.status} · anonymous approval response body redacted`;
+            observation.matched = response.status === 401 || response.status === 403;
           } else {
             observation.actual = `HTTP ${response.status} · anonymous response body redacted`;
             observation.matched = response.status === 401 || response.status === 403;
@@ -116,9 +132,10 @@ export function createOperationsHandler({ config, env = process.env,
       for (const observation of observations) Object.assign(
         checks.find(item => item.checkId === observation.checkId),
         { status: 'measured', actual: observation.actual, requestId: observation.requestId,
-          checkedAt },
+          checkedAt, matched: observation.matched },
       );
       const measured = checks.filter(item => item.status === 'measured');
+      const matched = measured.filter(item => item.matched === true);
       return res.status(200).json({
         schema: 'aleph.operations.v1',
         checkedCommit: env.VERCEL_GIT_COMMIT_SHA?.toLowerCase() ?? 'local',
@@ -130,8 +147,8 @@ export function createOperationsHandler({ config, env = process.env,
         revocation: { status: 'not_run', proposed: null, completed: null, reason: 'engine revocation result was not supplied' },
         recovery: recoverySummary(),
         checkCounts: { total: checks.length, measured: measured.length,
-          notRun: checks.length - measured.length },
-        checks,
+          matched: matched.length, notRun: checks.length - measured.length },
+        checks: checks.map(({ matched: _matched, ...item }) => item),
       });
     } catch {
       return res.status(503).json({ error: '작전 기록을 확인할 수 없습니다.' });

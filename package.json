@@ -17,7 +17,9 @@
     "backup": "node scripts/backup.mjs",
     "restore": "node scripts/restore.mjs",
     "restore:plan": "node scripts/policy-restore.mjs plan",
-    "restore:apply": "node scripts/policy-restore.mjs apply"
+    "restore:apply": "node scripts/policy-restore.mjs apply",
+    "device:test": "node --test test/auth-session.test.mjs test/step11-device-approval.test.mjs",
+    "operations:test": "node scripts/operations-test.mjs"
   },
   "engines": {
     "node": ">=22"

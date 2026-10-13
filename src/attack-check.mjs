@@ -98,5 +98,21 @@ export async function runAttackChecks(config) {
         observed: `HTTP ${anonymousOps?.status ?? 0}; JSON error ${anonymousOpsJsonError}` },
     );
   }
+  if (config.step >= 11) {
+    const [manifest, anonymousApproval] = await Promise.all([
+      request('/manifest.webmanifest'), request('/api/device-approval'),
+    ]);
+    let manifestOk = false;
+    try {
+      manifestOk = manifest?.ok && typeof (await manifest.json())?.name === 'string';
+    } catch { manifestOk = false; }
+    const anonymousApprovalJsonError = await hasJsonError(anonymousApproval);
+    results.push(
+      { attackId: 'webapp_manifest', expected: 'GET /manifest.webmanifest returns an installable manifest',
+        observed: `HTTP ${manifest?.status ?? 0}; manifest ${manifestOk}` },
+      { attackId: 'device_approval_anonymous', expected: 'No-token device approval requests return JSON 401 or 403',
+        observed: `HTTP ${anonymousApproval?.status ?? 0}; JSON error ${anonymousApprovalJsonError}` },
+    );
+  }
   return results;
 }

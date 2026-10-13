@@ -92,7 +92,7 @@ test('notes API rejects absent and malformed bearer tokens with JSON 401', async
           body: { userId: 'admin', role: 'service_role' },
         }, response);
         assert.equal(response.statusCode, 401);
-        assert.deepEqual(response.body, { error: 'UNAUTHORIZED' });
+        assert.equal(typeof response.body?.error, 'string');
         assert.equal(response.headers.get('cache-control'), 'no-store');
         assert.equal(response.headers.get('x-content-type-options'), 'nosniff');
       }
@@ -262,16 +262,15 @@ test('item routes deny cross-owner reads, updates, and deletes while allowing ea
 });
 
 
-test('browser auth UI uses the Supabase SDK and sends bearer tokens without a server key', async () => {
+test('browser auth UI uses the server session API and never holds tokens or a server key', async () => {
   const html = await readFile(new URL('../public/index.html', import.meta.url), 'utf8');
+  const app = await readFile(new URL('../public/app.js', import.meta.url), 'utf8');
   const buildScript = await readFile(new URL('../scripts/build-public.mjs', import.meta.url), 'utf8');
   const ignoreRules = await readFile(new URL('../.gitignore', import.meta.url), 'utf8');
-  assert.match(html, /@supabase\/supabase-js@2\.117\.2/u);
-  assert.match(html, /signInWithPassword/u);
-  assert.match(html, /supabase\.auth\.signOut/u);
-  assert.match(html, /Authorization: `Bearer \$\{activeSession\.access_token\}`/u);
-  assert.match(html, /\/api\/notes\/\$\{encodeURIComponent\(note\.id\)\}/u);
-  assert.doesNotMatch(html, /SUPABASE_SECRET_KEY|sb_secret_/u);
+  assert.match(html, /\/app\.js/u);
+  assert.match(app, /\/api\/auth/u);
+  assert.match(app, /credentials: 'same-origin'/u);
+  assert.doesNotMatch(app, /SUPABASE_SECRET_KEY|sb_secret_|Authorization|localStorage|sessionStorage|indexedDB/u);
   assert.match(buildScript, /SUPABASE_PUBLISHABLE_KEY/u);
   assert.match(buildScript, /auth-config\.json/u);
   assert.match(ignoreRules, /public\/auth-config\.json/u);

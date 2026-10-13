@@ -1,282 +1,46 @@
 <!doctype html>
 <html lang="ko">
 <head>
-  <meta charset="utf-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>BYTE BACK | 점령된 자료실</title>
-  <style>
-    :root { color-scheme: dark; font-family: system-ui, sans-serif; }
-    body { margin: 0; min-height: 100vh; background: #101a28; color: #ecf4ff; }
-    main { max-width: 760px; margin: 0 auto; padding: 44px 22px 64px; }
-    .eyebrow { color: #8ad8df; font-size: 14px; font-weight: 700; letter-spacing: .08em; }
-    h1 { margin: 16px 0; font-size: clamp(30px, 7vw, 48px); line-height: 1.2; }
-    p { font-size: 17px; line-height: 1.7; color: #bfd0e5; }
-    .notice { margin: 26px 0; padding: 18px; border: 1px solid #d07384; border-radius: 14px; color: #ffe3e8; background: #612a3544; }
-    ul { list-style: none; display: grid; gap: 12px; padding: 0; }
-    li { border: 1px solid #51667c; border-radius: 14px; padding: 17px 19px; background: #1a2a3d; }
-    strong { display: block; font-size: 18px; margin-bottom: 5px; }
-    li span { color: #bfd0e5; }
-    .auth-panel { margin: 24px 0; padding: 20px; border: 1px solid #51667c; border-radius: 14px; background: #1a2a3d; }
-    .auth-panel h2 { margin: 0 0 12px; font-size: 22px; }
-    .auth-panel form { display: grid; gap: 12px; }
-    .auth-panel label { display: grid; gap: 6px; color: #bfd0e5; }
-    .auth-panel input, .auth-panel button { min-height: 42px; padding: 9px 12px; border: 1px solid #51667c; border-radius: 8px; font: inherit; }
-    .auth-panel input { color: #ecf4ff; background: #101a28; }
-    .auth-panel button { width: fit-content; color: #101a28; background: #8ad8df; font-weight: 700; cursor: pointer; }
-    #auth-status { margin: 12px 0 0; font-size: 14px; }
-    .auth-panel textarea, .note-editor-form input, .note-editor-form textarea { min-height: 42px; padding: 9px 12px; border: 1px solid #51667c; border-radius: 8px; color: #ecf4ff; background: #101a28; font: inherit; }
-    .note-body { display: block; margin-top: 6px; white-space: pre-wrap; }
-    .note-actions { display: flex; gap: 8px; margin-top: 12px; }
-    .note-actions button { padding: 7px 10px; border: 1px solid #8ad8df; border-radius: 8px; color: #ecf4ff; background: #243a50; font: inherit; cursor: pointer; }
-    .note-editor-form { display: grid; gap: 10px; }
-    .note-editor-form label { display: grid; gap: 6px; color: #bfd0e5; }
-    [hidden] { display: none !important; }
-  </style>
-</head>
-<body>
-  <main>
-    <div class="eyebrow">BYTE BACK · 3단계 로그인 추가</div>
-    <h1>자료실</h1>
-    <p>기록은 데이터베이스에서 불러옵니다. 아래 내용은 실습용 가상 자료입니다.</p>
-    <section class="auth-panel" aria-labelledby="auth-heading">
-      <h2 id="auth-heading">계정 로그인</h2>
-      <form id="login-form">
-        <label>이메일<input id="login-email" type="email" autocomplete="email" required></label>
-        <label>비밀번호<input id="login-password" type="password" autocomplete="current-password" required></label>
-        <button id="login-submit" type="submit">로그인</button>
-      </form>
-      <button id="logout" type="button" hidden>로그아웃</button>
-      <p id="auth-status" aria-live="polite">인증 설정을 불러오는 중입니다.</p>
-    </section>
-    <div class="notice">로그인한 사용자만 서버에서 인증된 뒤 자료를 요청할 수 있습니다. 실제 개인정보나 비밀값은 넣지 마세요.</div>
-    <section id="note-editor" class="auth-panel" aria-labelledby="note-editor-heading" hidden>
-      <h2 id="note-editor-heading">내 가상 메모</h2>
-      <form id="create-note-form">
-        <label>제목<input id="note-title" type="text" maxlength="120" required></label>
-        <label>내용<textarea id="note-body" rows="4" maxlength="10000" required></textarea></label>
-        <button id="create-note-button" type="submit">메모 추가</button>
-      </form>
-    </section>
-    <ul id="notes" aria-live="polite"><li>로그인 후 자료를 볼 수 있습니다.</li></ul>
-  </main>
-  <script type="module">
-    const list = document.querySelector('#notes');
-    const loginForm = document.querySelector('#login-form');
-    const emailInput = document.querySelector('#login-email');
-    const passwordInput = document.querySelector('#login-password');
-    const logoutButton = document.querySelector('#logout');
-    const authStatus = document.querySelector('#auth-status');
-    const notePanel = document.querySelector('#note-editor');
-    const createNoteForm = document.querySelector('#create-note-form');
-    const noteTitleInput = document.querySelector('#note-title');
-    const noteBodyInput = document.querySelector('#note-body');
-    const createNoteButton = document.querySelector('#create-note-button');
-    let activeSession = null;
-    let lastAccessToken = null;
-
-    const showNoteMessage = message => {
-      const item = document.createElement('li');
-      item.textContent = message;
-      list.replaceChildren(item);
-    };
-    const showApiError = error => {
-      authStatus.textContent = error?.message === 'UNAUTHORIZED'
-        ? '로그인 인증을 확인하세요.'
-        : '메모 작업을 처리하지 못했습니다.';
-    };
-    const apiRequest = async (path, method = 'GET', body) => {
-      if (!activeSession?.access_token) throw new Error('UNAUTHORIZED');
-      const headers = { Authorization: `Bearer ${activeSession.access_token}` };
-      const options = { method, headers, cache: 'no-store' };
-      if (body !== undefined) {
-        headers['Content-Type'] = 'application/json';
-        options.body = JSON.stringify(body);
-      }
-      const response = await fetch(path, options);
-      const payload = await response.json().catch(() => null);
-      if (!response.ok) throw new Error(payload?.error || 'REQUEST_FAILED');
-      return payload;
-    };
-    const openNoteEditor = (item, note) => {
-      const form = document.createElement('form');
-      form.className = 'note-editor-form';
-      const titleLabel = document.createElement('label');
-      titleLabel.textContent = '제목';
-      const titleInput = document.createElement('input');
-      titleInput.type = 'text';
-      titleInput.maxLength = 120;
-      titleInput.required = true;
-      titleInput.value = note.title;
-      titleLabel.append(titleInput);
-      const bodyLabel = document.createElement('label');
-      bodyLabel.textContent = '내용';
-      const bodyInput = document.createElement('textarea');
-      bodyInput.rows = 4;
-      bodyInput.maxLength = 10000;
-      bodyInput.required = true;
-      bodyInput.value = note.body;
-      bodyLabel.append(bodyInput);
-      const actions = document.createElement('div');
-      actions.className = 'note-actions';
-      const saveButton = document.createElement('button');
-      saveButton.type = 'submit';
-      saveButton.textContent = '저장';
-      const cancelButton = document.createElement('button');
-      cancelButton.type = 'button';
-      cancelButton.textContent = '취소';
-      actions.append(saveButton, cancelButton);
-      form.append(titleLabel, bodyLabel, actions);
-      item.replaceChildren(form);
-      form.addEventListener('submit', async event => {
-        event.preventDefault();
-        saveButton.disabled = true;
-        try {
-          await apiRequest(`/api/notes/${encodeURIComponent(note.id)}`, 'PUT', {
-            title: titleInput.value,
-            body: bodyInput.value,
-          });
-          authStatus.textContent = '메모를 수정했습니다.';
-          await loadNotes(activeSession);
-        } catch (error) {
-          showApiError(error);
-          saveButton.disabled = false;
-        }
-      });
-      cancelButton.addEventListener('click', () => { void loadNotes(activeSession); });
-    };
-    const renderNotes = notes => {
-      if (!notes.length) {
-        showNoteMessage('아직 메모가 없습니다.');
-        return;
-      }
-      list.replaceChildren(...notes.map(note => {
-        const item = document.createElement('li');
-        const title = document.createElement('strong');
-        const body = document.createElement('span');
-        const actions = document.createElement('div');
-        const editButton = document.createElement('button');
-        const deleteButton = document.createElement('button');
-        title.textContent = note.title;
-        body.className = 'note-body';
-        body.textContent = note.body;
-        actions.className = 'note-actions';
-        editButton.type = 'button';
-        editButton.textContent = '수정';
-        editButton.setAttribute('aria-label', `${note.title} 수정`);
-        deleteButton.type = 'button';
-        deleteButton.textContent = '삭제';
-        deleteButton.setAttribute('aria-label', `${note.title} 삭제`);
-        editButton.addEventListener('click', () => openNoteEditor(item, note));
-        deleteButton.addEventListener('click', async () => {
-          deleteButton.disabled = true;
-          try {
-            await apiRequest(`/api/notes/${encodeURIComponent(note.id)}`, 'DELETE');
-            authStatus.textContent = '메모를 삭제했습니다.';
-            await loadNotes(activeSession);
-          } catch (error) {
-            showApiError(error);
-            deleteButton.disabled = false;
-          }
-        });
-        actions.append(editButton, deleteButton);
-        item.append(title, body, actions);
-        return item;
-      }));
-    };
-    const loadNotes = async session => {
-      if (!session?.access_token) {
-        showNoteMessage('로그인 후 자료를 볼 수 있습니다.');
-        return;
-      }
-      try {
-        const notes = await apiRequest('/api/notes');
-        if (!Array.isArray(notes) || notes.some(note => typeof note?.id !== 'string'
-            || typeof note.title !== 'string' || typeof note.body !== 'string')) {
-          throw new Error('INVALID_NOTES');
-        }
-        renderNotes(notes);
-      } catch (error) {
-        showNoteMessage(error?.message === 'UNAUTHORIZED'
-          ? '로그인 인증에 실패했습니다.'
-          : '자료를 불러오지 못했습니다.');
-      }
-    };
-    const setSignedInState = session => {
-      activeSession = session?.access_token ? session : null;
-      const signedIn = Boolean(activeSession);
-      loginForm.hidden = signedIn;
-      logoutButton.hidden = !signedIn;
-      notePanel.hidden = !signedIn;
-      authStatus.textContent = signedIn
-        ? `로그인됨: ${session.user?.email ?? '계정'}`
-        : '로그아웃 상태입니다.';
-      const nextAccessToken = activeSession?.access_token ?? '';
-      if (nextAccessToken !== lastAccessToken) {
-        lastAccessToken = nextAccessToken;
-        void loadNotes(activeSession);
-      }
-    };
-
-    createNoteForm.addEventListener('submit', async event => {
-      event.preventDefault();
-      createNoteButton.disabled = true;
-      try {
-        const created = await apiRequest('/api/notes', 'POST', {
-          title: noteTitleInput.value,
-          body: noteBodyInput.value,
-        });
-        if (typeof created?.id !== 'string') throw new Error('INVALID_RESPONSE');
-        createNoteForm.reset();
-        authStatus.textContent = '메모를 추가했습니다.';
-        await loadNotes(activeSession);
-      } catch (error) {
-        showApiError(error);
-      } finally {
-        createNoteButton.disabled = false;
-      }
-    });
-
-    try {
-      const configResponse = await fetch('/auth-config.json', { cache: 'no-store' });
-      if (!configResponse.ok) throw new Error('AUTH_CONFIG_UNAVAILABLE');
-      const config = await configResponse.json();
-      if (typeof config.supabaseUrl !== 'string' || typeof config.publishableKey !== 'string') {
-        throw new Error('AUTH_CONFIG_INVALID');
-      }
-      const { createClient } = await import('https://esm.sh/@supabase/supabase-js@2.117.2');
-      const supabase = createClient(config.supabaseUrl, config.publishableKey);
-      const { data, error } = await supabase.auth.getSession();
-      if (error) throw error;
-      setSignedInState(data.session);
-      supabase.auth.onAuthStateChange((_event, session) => setSignedInState(session));
-      loginForm.addEventListener('submit', async event => {
-        event.preventDefault();
-        authStatus.textContent = '로그인 중입니다.';
-        const { data: signedInData, error: signInError } = await supabase.auth.signInWithPassword({
-          email: emailInput.value.trim(),
-          password: passwordInput.value,
-        });
-        if (signInError) {
-          authStatus.textContent = `로그인 실패: ${signInError.message}`;
-          return;
-        }
-        passwordInput.value = '';
-        loginForm.reset();
-        setSignedInState(signedInData.session);
-      });
-      logoutButton.addEventListener('click', async () => {
-        const { error: signOutError } = await supabase.auth.signOut();
-        if (signOutError) {
-          authStatus.textContent = `로그아웃 실패: ${signOutError.message}`;
-          return;
-        }
-        setSignedInState(null);
-      });
-    } catch {
-      authStatus.textContent = '로그인 설정을 불러오지 못했습니다.';
-      loginForm.querySelectorAll('input, button').forEach(control => { control.disabled = true; });
-      showNoteMessage('로그인 설정을 불러오지 못했습니다.');
-    }
-  </script>
-</body>
-</html>
+<meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<meta name="theme-color" content="#101a28"><link rel="manifest" href="/manifest.webmanifest">
+<title>BYTE BACK | 내 자료실</title>
+<style>
+:root{color-scheme:dark;font-family:system-ui,sans-serif}body{margin:0;background:#101a28;color:#ecf4ff}main{max-width:1180px;margin:auto;padding:40px 22px}h1{font-size:40px}.eyebrow{color:#8ad8df}p{line-height:1.7;color:#bfd0e5}.panel,li{padding:20px;border:1px solid #51667c;border-radius:14px;background:#1a2a3d;margin:16px 0}label{display:block;margin:12px 0}input,textarea{box-sizing:border-box;width:100%;padding:12px;margin-top:6px;border:1px solid #51667c;border-radius:8px;background:#101a28;color:#ecf4ff}button{padding:10px 16px;border:0;border-radius:8px;background:#8ad8df;color:#101a28;cursor:pointer;margin:6px 6px 0 0}button:disabled{opacity:.5;cursor:wait}ul{list-style:none;padding:0}li strong{font-size:19px}.body{white-space:pre-wrap;color:#bfd0e5}#status{min-height:24px}.operation-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(180px,1fr));gap:10px;margin:16px 0}.operation-card{padding:12px;border:1px solid #51667c;border-radius:10px;background:#101a28}.operation-card strong{display:block;color:#8ad8df;margin-bottom:6px}.table-wrap{overflow:auto}table{width:100%;border-collapse:collapse;font-size:14px}th,td{padding:10px;border:1px solid #51667c;text-align:left;vertical-align:top}th{background:#101a28}.not-run{color:#f5c87a}.measured{color:#8ad8df}[hidden]{display:none!important}
+</style>
+</head><body><main>
+<div class="eyebrow">BYTE BACK · 12단계 탈환 작전실</div><h1>내 자료실</h1>
+<p>학습용 가상 메모만 사용하세요. 로그인한 계정의 메모만 읽고 추가·수정·삭제할 수 있습니다.</p>
+<p>이 화면은 설치할 수 있지만, 설치 여부는 기기 승인의 근거가 아닙니다. 오프라인에서는 보호 자료를 열지 않고 안내만 표시합니다.</p>
+<button id="install" type="button" hidden>앱 설치</button>
+<p id="status" role="status" aria-live="polite">로그인 설정을 확인하는 중입니다.</p>
+<form id="login" class="panel">
+<h2>로그인</h2><label>이메일<input id="email" type="email" autocomplete="username" required></label>
+<label>비밀번호<input id="password" type="password" autocomplete="current-password" required></label>
+<button id="login-button" disabled>로그인</button>
+</form>
+<section id="account" class="panel" hidden><span id="account-label"></span><br><button id="logout" type="button">로그아웃</button><button id="refresh" type="button">목록 새로고침</button></section>
+<section id="device" class="panel" hidden>
+<h2>기기 승인</h2><p id="device-status">서버에서 기기 승인 상태를 확인하는 중입니다.</p>
+<button id="request-device" type="button" hidden>이 기기 승인 요청</button>
+<button id="refresh-device" type="button">승인 상태 새로고침</button>
+<button id="go-operations" type="button">탈환 작전실 확인</button>
+<p>요청 버튼은 승인 요청만 만듭니다. 관리자가 서버 승인표에서 확인하기 전에는 자료가 열리지 않습니다.</p>
+</section>
+<section id="operations" class="panel" hidden>
+<h2>탈환 작전실</h2>
+<p>화면 문구가 아니라 서버가 돌려준 가린 기록만 표시합니다. 실행하지 않은 시험은 미실행으로 남깁니다.</p>
+<p id="operations-status" role="status">서버의 기기 승인이 끝나면 작전 기록을 불러옵니다.</p>
+<button id="refresh-operations" type="button" disabled>작전실 새로고침</button>
+<div id="operations-summary" class="operation-grid" aria-live="polite"></div>
+<div class="table-wrap"><table>
+<thead><tr><th>단계·종류</th><th>요청</th><th>기대</th><th>실제 API 결과</th><th>요청 ID</th><th>확인 시각</th></tr></thead>
+<tbody id="operations-checks"></tbody>
+</table></div>
+</section>
+<form id="editor" class="panel" hidden><h2 id="editor-heading">가상 메모 추가</h2>
+<label>제목<input id="title" maxlength="200" required></label><label>가상 메모 내용<textarea id="body" maxlength="10000" rows="4" required></textarea></label>
+<button id="save">추가</button><button id="cancel" type="button" hidden>수정 취소</button></form>
+<ul id="notes" aria-live="polite" hidden></ul>
+</main>
+<script type="module" src="/app.js"></script>
+</body></html>
