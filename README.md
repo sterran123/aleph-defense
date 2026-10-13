@@ -8,7 +8,7 @@
 - `aleph.config.json`은 `step: 6`, `serviceId: "notes"`, `readPath: "/notes"`를 기록합니다. 서비스 ID와 경로는 `docs/DECIDER_REQUEST.md`의 `notes` 서비스 및 `GET /notes/:id` 계약 예시와 맞춥니다. 인증서·CA·서명 키를 새로 만들거나 저장하지 않습니다.
 - `src/decider.mjs`는 엔진이 확인한 `deviceRegistered`만 신뢰합니다. 등록된 요청은 `allow / approved`, 미등록 또는 확인되지 않은 요청은 `deny / device_not_registered`로 판정하며 `device_registered` 규칙을 반환합니다. 브라우저가 보낸 사용자·역할·기기 키는 사용하지 않습니다.
 - 로컬 확인: `npm run decider:test` 2개, `npm run test:r5` 2개, `npm run test:package` 4개, `npm run test:stage3` 6개 통과. `npm run build -- --local`도 통과했습니다. 이 결과는 엔진 연결, Production 배포 또는 심판 통과를 의미하지 않습니다.
-- 반별 엔진 연결 설명과 한 줄 설치 명령은 현재 저장소와 확인 가능한 ALEPH 도움말에서 찾지 못했습니다. 워크벤치 설치 안내를 엔진 명령으로 대신하지 않았고, 설치 및 라이브 통로 확인은 아직 수행하지 않았습니다. 공식 명령을 확보하면 그 안내에 따라 한 번 설치하고, 같은 Production 주소를 합성 시험 계정으로 열어 자료실 읽기를 확인합니다. 비밀값은 저장소·로그·제출물에 남기지 않습니다.
+- 6단계에는 별도로 설치할 프로그램이나 설치 명령이 없습니다. 저장소 루트에서 `npm run decider:test`를 실행해 등록 기기의 정상 요청은 허용되고, 미등록 기기의 가상 요청은 `deny / device_not_registered`로 거부되는지 확인합니다. 이 로컬 연습은 실제 엔진 연결, Production 배포 또는 심판 판정을 증명하지 않습니다. 비밀값은 Git이나 로그에 넣지 않습니다.
 
 ## 5단계 서버 전용 데이터 접근과 사용자별 메모 API
 
