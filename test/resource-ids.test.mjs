@@ -47,6 +47,10 @@ test('engine routes map only exact resource, method, path, and route combination
   assert.equal(resourceIdForDecisionRequest({ ...request, query: { action: 'export' } }), RESOURCE_IDS.notes);
   assert.equal(resourceIdForDecisionRequest({
     service: RESOURCE_IDS.instructorAnnouncements,
-    method: 'PUT', path: `/announcements/${noteId}`, route: 'PUT /announcements/:id',
+    method: 'GET', path: `/announcements/${noteId}`, route: 'GET /announcements/:id',
   }), RESOURCE_IDS.instructorAnnouncements);
+  assert.equal(resourceIdForDecisionRequest({
+    service: RESOURCE_IDS.instructorAnnouncements,
+    method: 'PUT', path: `/announcements/${noteId}`, route: 'PUT /announcements/:id',
+  }), null);
 });
