@@ -62,12 +62,9 @@ function hasZoneAccess(request, resourceId) {
     return false;
   }
 
-  // 3. 반 공지나 강사 자료에 대한 쓰기(POST·PUT·PATCH·DELETE)는 누구에게나 거부
+  // 3. 반 공지나 강사 자료는 학생 자료실 구역이 아니므로 판정기에서 무조건 거부
   if (service === RESOURCE_IDS.instructorAnnouncements || resourceId === RESOURCE_IDS.instructorAnnouncements || path.startsWith('/announcements')) {
-    if (['POST', 'PUT', 'PATCH', 'DELETE'].includes(method)) {
-      return false;
-    }
-    return method === 'GET' && route === 'GET /announcements/:id';
+    return false;
   }
 
   // 4. 메모 자원: 단일 메모(GET/PUT/DELETE /notes/:id)
