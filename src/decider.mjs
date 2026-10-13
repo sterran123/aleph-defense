@@ -1,4 +1,5 @@
 import { RESOURCE_IDS, resourceIdForDecisionRequest } from './resource-ids.mjs';
+export { diffPolicy, restorePolicy, VERIFIED_POLICY_REVISION, VERIFIED_POLICY_RULES } from './policy-backup.mjs';
 
 // ALEPH SDP 엔진이 확인한 요청만 받는 학생 판정기입니다.
 // deviceRegistered는 엔진 확인값만 사용하며 브라우저 입력·키·역할은 신뢰하지 않습니다.
