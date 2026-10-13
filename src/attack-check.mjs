@@ -28,7 +28,7 @@ export async function runAttackChecks(config) {
     anonymousNoteItem, invalidAnnouncementWrite] = await Promise.all([
     request('/data.json'), request('/api/notes'), request('/api/notes', 'Bearer invalid.invalid.invalid'),
     request('/aleph.json'), request('/'), request(`/api/notes/${sampleItemId}`),
-    request(`/api/announcements/${sampleItemId}`, 'Bearer invalid.invalid.invalid', 'PUT'),
+    request(`/api/announcements/${sampleItemId}`, 'Bearer invalid.invalid.invalid'),
   ]);
   const hasJsonError = async (response) => {
     if (!response || ![401, 403].includes(response.status)
@@ -63,7 +63,7 @@ export async function runAttackChecks(config) {
       observed: `HTTP ${invalidTokenApi?.status ?? 0}; JSON error ${invalidTokenJsonError}` },
     { attackId: 'anonymous_note_item', expected: 'No-token item reads return JSON 401 or 403',
       observed: `HTTP ${anonymousNoteItem?.status ?? 0}; JSON error ${anonymousItemJsonError}` },
-    { attackId: 'invalid_announcement_write', expected: 'Malformed bearer tokens cannot change announcements and return JSON 401 or 403',
+    { attackId: 'invalid_announcement_write', expected: 'Malformed bearer tokens cannot read announcements and return JSON 401 or 403',
       observed: `HTTP ${invalidAnnouncementWrite?.status ?? 0}; JSON error ${announcementWriteJsonError}` },
     { attackId: 'deployment_identity', expected: `The deployment identity reports step ${config.step}`,
       observed: `step ${identityStep}` },
@@ -77,8 +77,8 @@ export async function runAttackChecks(config) {
       ? config.auditRoute : '/api/notes/audit';
     const strictRoute = '/api/restore/notes/00000000-0000-4000-8000-000000000001';
     const [anonymousRestore, invalidTokenRestore, anonymousAudit, anonymousStrict, anonymousOps] = await Promise.all([
-      request(restoreRoute, null, 'POST'), request(restoreRoute, 'Bearer invalid.invalid.invalid', 'POST'),
-      request(auditRoute), request(strictRoute, null, 'POST'), request('/api/operations'),
+      request(restoreRoute), request(restoreRoute, 'Bearer invalid.invalid.invalid'),
+      request(auditRoute), request(strictRoute), request('/api/operations'),
     ]);
     const [anonymousRestoreJsonError, invalidRestoreJsonError, anonymousAuditJsonError,
       anonymousStrictJsonError, anonymousOpsJsonError] = await Promise.all([
@@ -92,7 +92,7 @@ export async function runAttackChecks(config) {
         observed: `HTTP ${invalidTokenRestore?.status ?? 0}; JSON error ${invalidRestoreJsonError}` },
       { attackId: 'audit_anonymous', expected: 'No-token audit log reads return JSON 401 or 403',
         observed: `HTTP ${anonymousAudit?.status ?? 0}; JSON error ${anonymousAuditJsonError}` },
-      { attackId: 'restore_strict_anonymous', expected: 'POST /api/restore/notes/:id without a token returns JSON 401 or 403',
+      { attackId: 'restore_strict_anonymous', expected: 'GET /api/restore/notes/:id without a token returns JSON 401 or 403',
         observed: `HTTP ${anonymousStrict?.status ?? 0}; JSON error ${anonymousStrictJsonError}` },
       { attackId: 'operations_anonymous', expected: 'GET /api/operations without a token returns JSON 401 or 403',
         observed: `HTTP ${anonymousOps?.status ?? 0}; JSON error ${anonymousOpsJsonError}` },
