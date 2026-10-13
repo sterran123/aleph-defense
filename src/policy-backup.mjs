@@ -1,4 +1,6 @@
-// 10단계: 침해 전 검증된 안전 정책 사본 및 복원 절차
+// Stage 10 keeps a code-reviewed, versioned policy snapshot as the trust anchor.
+import { createHash } from 'node:crypto';
+
 export const VERIFIED_POLICY_REVISION = 1;
 export const VERIFIED_POLICY_RULES = Object.freeze([
   'device_registered',
@@ -6,32 +8,75 @@ export const VERIFIED_POLICY_RULES = Object.freeze([
   'resource_zone',
 ]);
 
-export function diffPolicy(currentRules, backupRules = VERIFIED_POLICY_RULES) {
-  if (!Array.isArray(currentRules) || !Array.isArray(backupRules)) {
-    throw new TypeError('invalid_policy_rules_array');
+function snapshotHash(revision, rules) {
+  return createHash('sha256')
+    .update(JSON.stringify({ revision, rules }), 'utf8')
+    .digest('hex');
+}
+
+export const VERIFIED_POLICY_BACKUP = Object.freeze({
+  revision: VERIFIED_POLICY_REVISION,
+  rules: VERIFIED_POLICY_RULES,
+  sha256: snapshotHash(VERIFIED_POLICY_REVISION, VERIFIED_POLICY_RULES),
+});
+
+export function verifyPolicyBackup(backup = VERIFIED_POLICY_BACKUP) {
+  return Boolean(backup && backup.revision === VERIFIED_POLICY_REVISION
+    && Array.isArray(backup.rules)
+    && backup.rules.length === VERIFIED_POLICY_RULES.length
+    && backup.rules.every((rule, index) => rule === VERIFIED_POLICY_RULES[index])
+    && backup.sha256 === VERIFIED_POLICY_BACKUP.sha256
+    && snapshotHash(backup.revision, backup.rules) === backup.sha256);
+}
+
+function policyRules(currentPolicy) {
+  if (Array.isArray(currentPolicy)) return currentPolicy;
+  if (currentPolicy && typeof currentPolicy === 'object' && Array.isArray(currentPolicy.rules)) {
+    return currentPolicy.rules;
+  }
+  throw new TypeError('invalid_policy_rules_array');
+}
+
+export function diffPolicy(currentPolicy, backup = VERIFIED_POLICY_BACKUP) {
+  const currentRules = policyRules(currentPolicy);
+  if (currentRules.some(rule => typeof rule !== 'string') || !verifyPolicyBackup(backup)) {
+    throw new TypeError('unverified_policy_backup');
   }
   const currentSet = new Set(currentRules);
-  const backupSet = new Set(backupRules);
-
-  const missing = backupRules.filter(r => !currentSet.has(r));
-  const added = currentRules.filter(r => !backupSet.has(r));
+  const backupSet = new Set(backup.rules);
+  const missing = backup.rules.filter(rule => !currentSet.has(rule));
+  const added = currentRules.filter(rule => !backupSet.has(rule));
 
   return {
-    verifiedRevision: VERIFIED_POLICY_REVISION,
+    verifiedRevision: backup.revision,
+    verifiedSha256: backup.sha256,
     inSync: missing.length === 0 && added.length === 0,
     missing,
     added,
-    scope: { current: [...currentRules], target: [...backupRules] },
+    scope: { current: [...currentRules], target: [...backup.rules] },
   };
 }
 
-export function restorePolicy(currentRules, backupRules = VERIFIED_POLICY_RULES) {
-  const diff = diffPolicy(currentRules, backupRules);
-  const restoredRules = [...backupRules];
+export function restorePolicy(currentPolicy, backup = VERIFIED_POLICY_BACKUP) {
+  const currentRules = policyRules(currentPolicy);
+  const diff = diffPolicy(currentPolicy, backup);
+  const restoredRules = [...backup.rules];
+  const state = Array.isArray(currentPolicy)
+    ? { revision: backup.revision, rules: restoredRules }
+    : {
+      ...currentPolicy,
+      revision: backup.revision,
+      rules: restoredRules,
+      ...(Array.isArray(currentPolicy.serviceRules) ? { serviceRules: [...currentPolicy.serviceRules] } : {}),
+      ...(Array.isArray(currentPolicy.auditRecords)
+        ? { auditRecords: structuredClone(currentPolicy.auditRecords) } : {}),
+    };
   return {
     restored: true,
-    revision: VERIFIED_POLICY_REVISION,
+    revision: backup.revision,
     diff,
     rules: restoredRules,
+    state,
+    currentRules: [...currentRules],
   };
 }
