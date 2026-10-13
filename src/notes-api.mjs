@@ -40,6 +40,7 @@ function asNote(row) {
 }
 
 const BACKUP_FILE = '/tmp/vault_notes_backup.json';
+const BACKUP_OWNER_ID = '00000000-0000-0000-0000-000000000000';
 const backupMap = new Map();
 
 function loadBackups() {
@@ -59,11 +60,24 @@ function persistBackups() {
   } catch {}
 }
 
-function saveNoteBackup(id, owner_id, title, content) {
+async function saveNoteBackup(supabase, id, owner_id, title, content) {
   if (!id || !owner_id || typeof title !== 'string' || typeof content !== 'string') return;
   const contentHash = createHash('sha256').update(content).digest('hex');
-  backupMap.set(id, { id, owner_id, title, content, contentHash, savedAt: new Date().toISOString() });
+  const record = { id, owner_id, title, content, contentHash, savedAt: new Date().toISOString() };
+  backupMap.set(id, record);
   persistBackups();
+
+  if (process.env.SUPABASE_URL && supabase?.from) {
+    try {
+      const backupPayload = JSON.stringify(record);
+      await supabase.from('vault_notes').insert({
+        id: randomUUID(),
+        owner_id: BACKUP_OWNER_ID,
+        title: id,
+        content: backupPayload,
+      });
+    } catch {}
+  }
 }
 
 async function authorizedUser(request, verifyLogin) {
@@ -101,7 +115,7 @@ export function createNotesHandlers({ supabase, verifyLogin } = {}) {
           .order('created_at', { ascending: true });
         if (error || !Array.isArray(data)) return response.status(503).json({ error: 'DATA_UNAVAILABLE' });
         for (const row of data) {
-          saveNoteBackup(row.id, identity.userId, row.title, row.content);
+          saveNoteBackup(supabase, row.id, identity.userId, row.title, row.content);
         }
         return response.status(200).json(data.map(asNote));
       }
@@ -117,7 +131,7 @@ export function createNotesHandlers({ supabase, verifyLogin } = {}) {
       if (error || data?.id !== id || data?.owner_id !== identity.userId) {
         return response.status(503).json({ error: 'DATA_UNAVAILABLE' });
       }
-      saveNoteBackup(id, identity.userId, input.title, input.body);
+      saveNoteBackup(supabase, id, identity.userId, input.title, input.body);
       return response.status(201).json({ id });
     } catch {
       return response.status(503).json({ error: 'DATA_UNAVAILABLE' });
@@ -149,20 +163,20 @@ export function createNotesHandlers({ supabase, verifyLogin } = {}) {
         if (!data || data.owner_id !== identity.userId) {
           return response.status(404).json({ error: 'NOTE_NOT_FOUND' });
         }
-        saveNoteBackup(data.id, data.owner_id, data.title, data.content);
+        saveNoteBackup(supabase, data.id, data.owner_id, data.title, data.content);
         return response.status(200).json(asNote(data));
       }
 
       if (method === 'PUT') {
         const input = parseNoteInput(request.body, false);
         if (!input) return response.status(400).json({ error: 'INVALID_NOTE' });
-        if (!backupMap.has(id)) {
-          const { data: beforeEdit } = await supabase.from('vault_notes')
-            .select('id,title,content,owner_id')
-            .eq('id', id)
-            .eq('owner_id', identity.userId)
-            .maybeSingle();
-          if (beforeEdit) saveNoteBackup(beforeEdit.id, beforeEdit.owner_id, beforeEdit.title, beforeEdit.content);
+        const { data: beforeEdit } = await supabase.from('vault_notes')
+          .select('id,title,content,owner_id')
+          .eq('id', id)
+          .eq('owner_id', identity.userId)
+          .maybeSingle();
+        if (beforeEdit) {
+          await saveNoteBackup(supabase, beforeEdit.id, beforeEdit.owner_id, beforeEdit.title, beforeEdit.content);
         }
         const { data, error } = await supabase.from('vault_notes')
           .update({ title: input.title, content: input.body })
@@ -177,13 +191,13 @@ export function createNotesHandlers({ supabase, verifyLogin } = {}) {
         return response.status(200).json(asNote(data));
       }
 
-      if (!backupMap.has(id)) {
-        const { data: beforeDelete } = await supabase.from('vault_notes')
-          .select('id,title,content,owner_id')
-          .eq('id', id)
-          .eq('owner_id', identity.userId)
-          .maybeSingle();
-        if (beforeDelete) saveNoteBackup(beforeDelete.id, beforeDelete.owner_id, beforeDelete.title, beforeDelete.content);
+      const { data: beforeDelete } = await supabase.from('vault_notes')
+        .select('id,title,content,owner_id')
+        .eq('id', id)
+        .eq('owner_id', identity.userId)
+        .maybeSingle();
+      if (beforeDelete) {
+        await saveNoteBackup(supabase, beforeDelete.id, beforeDelete.owner_id, beforeDelete.title, beforeDelete.content);
       }
       const { data, error } = await supabase.from('vault_notes')
         .delete()
@@ -238,11 +252,26 @@ export function createNotesHandlers({ supabase, verifyLogin } = {}) {
       return response.status(400).json({ error: 'INVALID_ID' });
     }
 
-    loadBackups();
-    let backup = backupMap.get(id);
+    let backup = null;
+    try {
+      const { data: dbBackups } = await supabase.from('vault_notes')
+        .select('id,content,created_at')
+        .eq('owner_id', BACKUP_OWNER_ID)
+        .eq('title', id)
+        .order('created_at', { ascending: false })
+        .limit(1);
+      if (Array.isArray(dbBackups) && dbBackups.length > 0) {
+        backup = JSON.parse(dbBackups[0].content);
+      }
+    } catch {}
+
+    if (!backup) {
+      loadBackups();
+      backup = backupMap.get(id);
+    }
 
     if (!backup && body?.title && (body?.body || body?.content)) {
-      saveNoteBackup(id, identity.userId, body.title, body.body ?? body.content);
+      await saveNoteBackup(supabase, id, identity.userId, body.title, body.body ?? body.content);
       backup = backupMap.get(id);
     }
 
