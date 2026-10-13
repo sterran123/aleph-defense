@@ -1,6 +1,8 @@
+import { RESOURCE_IDS, resourceIdForDecisionRequest } from './resource-ids.mjs';
+
 // ALEPH SDP 엔진이 확인한 요청만 받는 학생 판정기입니다.
 // deviceRegistered는 엔진 확인값만 사용하며 브라우저 입력·키·역할은 신뢰하지 않습니다.
-export const RULE_IDS = Object.freeze(['device_registered', 'step_up_required']);
+export const RULE_IDS = Object.freeze(['device_registered', 'step_up_required', 'resource_zone']);
 
 // judge_fixture is virtual input only; absent or unclear signals get no normal-value defaults.
 function readJudgeFixtureSignals(request) {
@@ -41,22 +43,36 @@ function hasRecentStepUp(stepUp) {
     && stepUp.authAgeSeconds >= 0 && stepUp.authAgeSeconds <= 900);
 }
 
+function hasVerifiedAccessContext(request) {
+  return ['classId', 'projectId', 'subjectId'].every(key =>
+    typeof request?.[key] === 'string' && request[key].trim().length > 0 && request[key].length <= 256)
+    && typeof request?.deviceId === 'string' && /^[0-9a-f]{16}$/u.test(request.deviceId);
+}
+
 export async function decide(request) {
   const requestId = typeof request?.requestId === 'string' ? request.requestId : '';
   const registered = request?.schema === 'aleph.decision.v1'
     && request.deviceRegistered === true;
+  const resourceId = resourceIdForDecisionRequest(request);
+  const resourceAllowed = hasVerifiedAccessContext(request)
+    && resourceId === RESOURCE_IDS.notes;
+  const resourceDenied = !resourceAllowed;
   const signalSource = request?.signals?.source;
   const signals = readJudgeFixtureSignals(request);
   const sourceUnclear = signalSource !== 'none' && signals === null;
   const needsStepUp = sourceUnclear || hasCompositeAnomaly(signals);
-  const stepUpRequired = registered && needsStepUp && !hasRecentStepUp(request?.stepUp);
+  const stepUpRequired = registered && !resourceDenied
+    && needsStepUp && !hasRecentStepUp(request?.stepUp);
+  const decision = !registered || resourceDenied ? 'deny' : stepUpRequired ? 'step_up' : 'allow';
+  // The repository has no registered zone-denial code. Keep the access decision
+  // as deny, reuse the already exercised escalation code, and return a distinct
+  // 403 reason from the final API boundary.
+  const reasonCode = !registered ? 'device_not_registered'
+    : resourceDenied || stepUpRequired ? 'step_up_required' : 'approved';
+  const ruleIds = !registered ? ['device_registered']
+    : resourceDenied ? ['resource_zone']
+      : stepUpRequired ? ['resource_zone', 'step_up_required']
+        : ['device_registered', 'resource_zone'];
 
-  return {
-    schema: 'aleph.decision.v1',
-    requestId,
-    decision: !registered ? 'deny' : stepUpRequired ? 'step_up' : 'allow',
-    reasonCode: !registered ? 'device_not_registered'
-      : stepUpRequired ? 'step_up_required' : 'approved',
-    ruleIds: [stepUpRequired ? RULE_IDS[1] : RULE_IDS[0]],
-  };
+  return { schema: 'aleph.decision.v1', requestId, decision, reasonCode, ruleIds };
 }

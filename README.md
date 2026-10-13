@@ -1,4 +1,12 @@
-# BYTE BACK 방어전 · 7단계 저장점
+# BYTE BACK 방어전 · 8단계 저장점
+
+## 8단계 저장점 · 자료마다 접근 구역 분리
+
+- `aleph.config.json`은 `step: 8`, 기존 Production 주소와 로그인 발급자, 원본 API 주소를 보존하고 `notes`와 `announcements`를 서로 다른 자원 ID로 선언합니다. 기존 메모 API 경로를 유지하며 공지 API 경로를 별도로 등록합니다.
+- `src/resource-ids.mjs`는 정확한 API 경로와 엔진 확인 `service`·`method`·`path`·`route` 조합으로만 자원을 식별합니다. 쿼리로 동작을 선택하지 않으며 `export` 같은 미등록 경로는 거부합니다.
+- `src/decider.mjs`는 엔진 확인 사용자·기기 문맥과 등록 기기 상태를 요구하고 메모의 허용 경로만 통과시킵니다. 기존 6·7단계 규칙은 유지합니다. 사람별 메모 소유권은 판정 요청에 없는 값으로 추정하지 않고 최종 API에서 검증합니다.
+- `/api/notes`는 검증된 Supabase 사용자만 owner로 저장하고 다른 소유자의 읽기·수정·삭제를 404로 거부합니다. `/api/announcements/:id`는 현재 검증 가능한 강사 역할과 공지 저장소가 없으므로 인증된 사용자도 403으로 fail-closed 처리합니다. 화면 메뉴는 바꾸지 않았습니다.
+- 로컬 확인: `npm run test:stage8` 10개, `npm run test:stage3` 6개, `npm run decider:test` 4개, `npm run fixture:7` 통과. 모두 가상·단위 시험이며 실제 엔진 연동, Production 배포 또는 심판 판정의 증거는 아닙니다.
 
 ## 7단계 저장점 · 복합 이상 접속은 추가 확인
 

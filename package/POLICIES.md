@@ -4,6 +4,8 @@
 
 | 규칙 | 단계 | 막는 공격 | 확인 방법 |
 |---|---|---|---|
-| (구현 후 작성) | | | |
+| `device_registered` | 6 | 등록되지 않은 기기 요청을 거부 | `npm run decider:test` 가상 요청 |
+| `step_up_required` | 7 | 출처 불명확 또는 복합 이상 접속에 추가 확인 요구 | `npm run decider:test`, `npm run fixture:7` 가상 요청 |
+| `resource_zone` | 8 | 알 수 없는 서비스·메서드·경로·라우트와 공지 쓰기를 거부 | `npm run test:stage8` 가상 요청; 실제 엔진 판정은 미실행 |
 
 브라우저에서 버튼을 숨기는 것만으로 서버 접근이 차단됐다고 적지 마세요.

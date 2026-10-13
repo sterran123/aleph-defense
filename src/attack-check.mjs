@@ -12,9 +12,10 @@ export async function runAttackChecks(config) {
     throw new Error('aleph.config.json의 실제 배포 주소를 먼저 넣어 주세요.');
   }
 
-  const request = async (pathname, authorization) => {
+  const request = async (pathname, authorization, method = 'GET') => {
     try {
       return await fetch(new URL(pathname, app), {
+        method,
         headers: authorization ? { Authorization: authorization } : undefined,
         redirect: 'error', signal: AbortSignal.timeout(10000),
       });
@@ -22,9 +23,12 @@ export async function runAttackChecks(config) {
       return null;
     }
   };
-  const [staticData, anonymousApi, invalidTokenApi, identityResponse, homepage] = await Promise.all([
+  const sampleItemId = 'cccccccc-cccc-4ccc-8ccc-cccccccccccc';
+  const [staticData, anonymousApi, invalidTokenApi, identityResponse, homepage,
+    anonymousNoteItem, invalidAnnouncementWrite] = await Promise.all([
     request('/data.json'), request('/api/notes'), request('/api/notes', 'Bearer invalid.invalid.invalid'),
-    request('/aleph.json'), request('/'),
+    request('/aleph.json'), request('/'), request(`/api/notes/${sampleItemId}`),
+    request(`/api/announcements/${sampleItemId}`, 'Bearer invalid.invalid.invalid', 'PUT'),
   ]);
   const hasJsonError = async (response) => {
     if (!response || ![401, 403].includes(response.status)
@@ -36,8 +40,9 @@ export async function runAttackChecks(config) {
       return false;
     }
   };
-  const [anonymousJsonError, invalidTokenJsonError] = await Promise.all([
+  const [anonymousJsonError, invalidTokenJsonError, anonymousItemJsonError, announcementWriteJsonError] = await Promise.all([
     hasJsonError(anonymousApi), hasJsonError(invalidTokenApi),
+    hasJsonError(anonymousNoteItem), hasJsonError(invalidAnnouncementWrite),
   ]);
   let identityStep = 'unavailable';
   if (identityResponse?.ok) {
@@ -56,6 +61,10 @@ export async function runAttackChecks(config) {
       observed: `HTTP ${anonymousApi?.status ?? 0}; JSON error ${anonymousJsonError}` },
     { attackId: 'invalid_bearer_token', expected: 'Malformed bearer tokens return JSON 401 or 403',
       observed: `HTTP ${invalidTokenApi?.status ?? 0}; JSON error ${invalidTokenJsonError}` },
+    { attackId: 'anonymous_note_item', expected: 'No-token item reads return JSON 401 or 403',
+      observed: `HTTP ${anonymousNoteItem?.status ?? 0}; JSON error ${anonymousItemJsonError}` },
+    { attackId: 'invalid_announcement_write', expected: 'Malformed bearer tokens cannot change announcements and return JSON 401 or 403',
+      observed: `HTTP ${invalidAnnouncementWrite?.status ?? 0}; JSON error ${announcementWriteJsonError}` },
     { attackId: 'deployment_identity', expected: `The deployment identity reports step ${config.step}`,
       observed: `step ${identityStep}` },
     { attackId: 'nosniff_header', expected: 'The first-page response includes X-Content-Type-Options: nosniff',
