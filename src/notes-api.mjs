@@ -2,6 +2,7 @@ import { randomUUID } from 'node:crypto';
 import { createClient } from '@supabase/supabase-js';
 import { createLoginVerifier } from './verify-login.mjs';
 import config from '../aleph.config.json' with { type: 'json' };
+import { RESOURCE_IDS, parseApiResourcePath } from './resource-ids.mjs';
 
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/iu;
 const SUPABASE_URL_PATTERN = /^https:\/\/[a-z0-9-]+\.supabase\.co$/iu;
@@ -151,7 +152,25 @@ export function createNotesHandlers({ supabase, verifyLogin } = {}) {
     }
   };
 
-  return Object.freeze({ collection, item });
+  const announcement = async (request, response) => {
+    setSecurityHeaders(response);
+    const method = String(request.method ?? '').toUpperCase();
+    if (!['GET', 'PUT', 'DELETE'].includes(method)) {
+      response.setHeader('Allow', 'GET, PUT, DELETE');
+      return response.status(405).json({ error: 'METHOD_NOT_ALLOWED' });
+    }
+    const identity = await authorizedUser(request, verifyLogin);
+    if (!identity) return response.status(401).json({ error: 'UNAUTHORIZED' });
+    const id = request.query?.id;
+    if (typeof id !== 'string' || !UUID.test(id)) {
+      return response.status(400).json({ error: 'INVALID_ID' });
+    }
+    // No verified teacher role or announcement storage exists in the current
+    // login contract. Keep this resource fail-closed instead of trusting a body role.
+    return response.status(403).json({ error: 'TEACHER_PERMISSION_REQUIRED' });
+  };
+
+  return Object.freeze({ collection, item, announcement });
 }
 
 export function getConfiguredNotesHandlers() {
@@ -172,9 +191,29 @@ export function getConfiguredNotesHandlers() {
   }
 }
 
-export async function routeNotes(kind, request, response) {
+export async function routeResource(resourceId, kind, request, response) {
   setSecurityHeaders(response);
+  if (typeof request?.url === 'string') {
+    let pathname;
+    try { pathname = new URL(request.url, 'https://resource.invalid').pathname; } catch {}
+    const parsedPath = pathname ? parseApiResourcePath(pathname) : null;
+    if (!parsedPath || parsedPath.resourceId !== resourceId
+        || kind === 'collection' && parsedPath.itemId !== null
+        || kind === 'item' && parsedPath.itemId === null) {
+      return response.status(404).json({ error: 'RESOURCE_NOT_FOUND' });
+    }
+    if (kind === 'item' && request.query?.id !== parsedPath.itemId) {
+      return response.status(400).json({ error: 'INVALID_ID' });
+    }
+  }
   const handlers = getConfiguredNotesHandlers();
-  if (!handlers || !handlers[kind]) return response.status(503).json({ error: 'SERVICE_UNAVAILABLE' });
-  return handlers[kind](request, response);
+  const handler = resourceId === RESOURCE_IDS.notes ? handlers?.[kind]
+    : resourceId === RESOURCE_IDS.instructorAnnouncements && kind === 'item'
+      ? handlers?.announcement : null;
+  if (typeof handler !== 'function') return response.status(503).json({ error: 'SERVICE_UNAVAILABLE' });
+  return handler(request, response);
+}
+
+export async function routeNotes(kind, request, response) {
+  return routeResource(RESOURCE_IDS.notes, kind, request, response);
 }
