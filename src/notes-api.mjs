@@ -261,34 +261,24 @@ export function createNotesHandlers({ supabase, verifyLogin } = {}) {
       return response.status(400).json({ error: 'INVALID_ID' });
     }
 
-    let backup = VIRTUAL_BACKUP_NOTES.find(n => n.id === id) ?? backupMap.get(id);
-
-    if (!backup && (body?.backup || (body?.title && (body?.body || body?.content)))) {
-      const src = body.backup ?? body;
-      const title = src.title;
-      const content = src.body ?? src.content;
-      const contentHash = createHash('sha256').update(content).digest('hex');
-      backup = {
-        id: src.id ?? id,
-        owner_id: src.owner_id ?? identity.userId,
-        title,
-        content,
-        contentHash: src.contentHash ?? src.hash ?? contentHash,
-      };
-    }
+    // backupMap first (runtime captures from PUT/POST), then static virtual backup as fallback
+    let backup = backupMap.get(id) ?? VIRTUAL_BACKUP_NOTES.find(n => n.id === id);
 
     if (!backup) {
       return response.status(404).json({ error: 'BACKUP_NOT_FOUND' });
     }
 
+    // Re-read and verify the backup (S10_BACKUP_UNVERIFIED)
+    const verifiedHash = createHash('sha256').update(backup.content).digest('hex');
+    if (backup.contentHash && backup.contentHash !== verifiedHash) {
+      // Verification failed: backup is corrupted, do NOT restore
+      return response.status(409).json({ error: 'BACKUP_VERIFICATION_FAILED' });
+    }
+    // Attach verified hash
+    const expectedHash = verifiedHash;
+
     if (backup.owner_id !== identity.userId) {
       return response.status(403).json({ error: 'FORBIDDEN' });
-    }
-
-    const expectedHash = createHash('sha256').update(backup.content).digest('hex');
-    const clientHash = body?.contentHash ?? body?.hash ?? body?.expectedHash;
-    if (clientHash && clientHash !== expectedHash) {
-      return response.status(400).json({ error: 'HASH_MISMATCH' });
     }
 
     const { data: existing } = await supabase.from('vault_notes')
