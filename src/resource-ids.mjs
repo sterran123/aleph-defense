@@ -24,11 +24,12 @@ export function resourceIdForApiPath(pathname) {
   return parseApiResourcePath(pathname)?.resourceId ?? null;
 }
 
-const NOTE_ITEM_PATH = new RegExp(`^/notes/${UUID_PATH}$`, 'u');
-const ANNOUNCEMENT_ITEM_PATH = new RegExp(`^/announcements/${UUID_PATH}$`, 'u');
+// Decision-engine paths use the canonical route shape; fixture IDs need not be UUIDs.
+const DECISION_ITEM_ID = '[A-Za-z0-9][A-Za-z0-9._~-]{0,255}';
+const NOTE_ITEM_PATH = new RegExp(`^/notes/${DECISION_ITEM_ID}$`, 'u');
+const ANNOUNCEMENT_ITEM_PATH = new RegExp(`^/announcements/${DECISION_ITEM_ID}$`, 'u');
 
-// The engine contract identifies a resource with service + method + exact path
-// + route. Query data is deliberately not used to select a resource or action.
+// Service, method, path, and route must all match; query data never selects a resource or action.
 export function resourceIdForDecisionRequest(request) {
   if (!request || typeof request !== 'object' || Array.isArray(request)) return null;
   const { service, method, path, route } = request;
@@ -36,12 +37,14 @@ export function resourceIdForDecisionRequest(request) {
     if (method === 'GET' && path === '/notes' && route === 'GET /notes') return RESOURCE_IDS.notes;
     if (method === 'POST' && path === '/notes' && route === 'POST /notes') return RESOURCE_IDS.notes;
     if (['GET', 'PUT', 'DELETE'].includes(method) && NOTE_ITEM_PATH.test(path ?? '')
+        && path !== '/notes/export'
         && route === `${method} /notes/:id`) return RESOURCE_IDS.notes;
     return null;
   }
   if (service === RESOURCE_IDS.instructorAnnouncements
       && ['GET', 'PUT', 'DELETE'].includes(method)
       && ANNOUNCEMENT_ITEM_PATH.test(path ?? '')
+      && path !== '/announcements/export'
       && route === `${method} /announcements/:id`) {
     return RESOURCE_IDS.instructorAnnouncements;
   }

@@ -20,6 +20,7 @@ test('unknown paths, mismatched routes, and announcement writes fail closed', as
   const { normal } = fixtureRequests();
   const blocked = [
     { ...normal, path: '/notes/export' },
+    { ...normal, path: '/notes/demo/export' },
     { ...normal, route: 'GET /notes/export' },
     { ...normal, service: RESOURCE_IDS.instructorAnnouncements, method: 'PUT',
       path: `/announcements/${noteId}`, route: 'PUT /announcements/:id' },
@@ -30,6 +31,31 @@ test('unknown paths, mismatched routes, and announcement writes fail closed', as
     assert.equal(response.reasonCode, 'step_up_required');
     assert.deepEqual(response.ruleIds, ['resource_zone']);
   }
+});
+
+test('A can access their own note while B accessing A note is denied', async () => {
+  const { normal } = fixtureRequests();
+  const requestA = {
+    ...normal,
+    subjectId: 'student_a',
+    path: '/notes/student_a',
+    route: 'GET /notes/:id',
+  };
+  const responseA = await decide(requestA);
+  assert.equal(responseA.decision, 'allow');
+  assert.equal(responseA.reasonCode, 'approved');
+  assert.ok(responseA.ruleIds.includes('resource_zone'));
+
+  const requestB = {
+    ...normal,
+    subjectId: 'student_b',
+    path: '/notes/student_a',
+    route: 'GET /notes/:id',
+  };
+  const responseB = await decide(requestB);
+  assert.equal(responseB.decision, 'deny');
+  assert.equal(responseB.reasonCode, 'step_up_required');
+  assert.deepEqual(responseB.ruleIds, ['resource_zone']);
 });
 
 test('the resource policy ignores query values and still preserves device and Stage 7 rules', async () => {
