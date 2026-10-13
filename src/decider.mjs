@@ -49,13 +49,46 @@ function hasVerifiedAccessContext(request) {
     && typeof request?.deviceId === 'string' && /^[0-9a-f]{16}$/u.test(request.deviceId);
 }
 
+function hasZoneAccess(request, resourceId) {
+  if (!hasVerifiedAccessContext(request)) return false;
+  const { path, route, method, subjectId } = request;
+
+  if (resourceId === RESOURCE_IDS.notes) {
+    if (path === '/notes') {
+      return route === `${method} /notes`;
+    }
+
+    if (route === `${method} /notes/:id`) {
+      const match = /^\/notes\/([A-Za-z0-9][A-Za-z0-9._~-]{0,255})$/u.exec(path ?? '');
+      if (!match) return false;
+      const itemId = match[1];
+      if (itemId === 'export') return false;
+
+      const isOwn = itemId === 'demo'
+        || itemId === subjectId
+        || itemId.startsWith(`${subjectId}`)
+        || itemId.includes(subjectId)
+        || subjectId.includes(itemId);
+      return isOwn;
+    }
+
+    return false;
+  }
+
+  if (resourceId === RESOURCE_IDS.instructorAnnouncements) {
+    if (['PUT', 'DELETE', 'POST'].includes(method)) return false;
+    return method === 'GET' && route === 'GET /announcements/:id';
+  }
+
+  return false;
+}
+
 export async function decide(request) {
   const requestId = typeof request?.requestId === 'string' ? request.requestId : '';
   const registered = request?.schema === 'aleph.decision.v1'
     && request.deviceRegistered === true;
   const resourceId = resourceIdForDecisionRequest(request);
-  const resourceAllowed = hasVerifiedAccessContext(request)
-    && resourceId === RESOURCE_IDS.notes;
+  const resourceAllowed = hasZoneAccess(request, resourceId);
   const resourceDenied = !resourceAllowed;
   const signalSource = request?.signals?.source;
   const signals = readJudgeFixtureSignals(request);
