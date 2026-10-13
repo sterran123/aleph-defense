@@ -36,13 +36,14 @@ test('engine routes map only exact resource, method, path, and route combination
   const request = {
     service: RESOURCE_IDS.notes,
     method: 'GET',
-    path: `/notes/${noteId}`,
+    path: '/notes/demo',
     route: 'GET /notes/:id',
   };
   assert.equal(resourceIdForDecisionRequest(request), RESOURCE_IDS.notes);
   assert.equal(resourceIdForDecisionRequest({ ...request, method: 'PUT', route: 'GET /notes/:id' }), null);
   assert.equal(resourceIdForDecisionRequest({ ...request, path: '/notes/export' }), null);
-  assert.equal(resourceIdForDecisionRequest({ ...request, route: 'GET /notes/export' }), null);
+  assert.equal(resourceIdForDecisionRequest({ ...request, path: '/notes/demo/export' }), null);
+  assert.equal(resourceIdForDecisionRequest({ ...request, path: '/notes/export', route: 'GET /notes/export' }), null);
   assert.equal(resourceIdForDecisionRequest({ ...request, query: { action: 'export' } }), RESOURCE_IDS.notes);
   assert.equal(resourceIdForDecisionRequest({
     service: RESOURCE_IDS.instructorAnnouncements,
