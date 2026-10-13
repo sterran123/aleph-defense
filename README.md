@@ -2,6 +2,7 @@
 
 ## 7단계 저장점 · 복합 이상 접속은 추가 확인
 
+- `aleph.config.json`은 `step: 7`과 Production 별칭 `https://aleph-defense-three.vercel.app`을 기록하고, 실제 배포 호스트와 커밋은 생성된 `/aleph.json`에서 확인합니다.
 - `src/decider.mjs`는 검증된 가상 `judge_fixture` 입력에서만 복합 신호를 해석합니다. 00:00-05:59 또는 22:00-23:59의 시간, `network: "unusual"`, 최근 300초 안의 `risk_signal` 20회 이상이 함께 있어야 `step_up / step_up_required`를 반환합니다. 지역 차이만으로 차단하지 않습니다.
 - 신호 출처가 누락되거나 불명확한 경우에는 정상값을 만들어 채우지 않고 재확인을 요구합니다. `source: "none"`은 실제 신호가 없다는 뜻이며, 가상 공격 신호나 실시간 탐지를 뜻하지 않습니다. 엔진이 확인한 `stepUp: { verified: true, authAgeSeconds: 0..900 }`만 재확인 완료로 인정합니다.
 - 로컬 확인: `npm run decider:test`의 정상·미등록·복합 이상·재확인 후 허용 테스트 4개, `npm run fixture:7`의 정상 `allow` 및 복합 이상 `step_up`. 모두 가상 입력 테스트이며 실제 엔진 연동, Production 배포 또는 심판 통과의 증거는 아닙니다.
@@ -30,7 +31,7 @@
 
 - `public.vault_notes`에는 RLS와 소유자 정책이 유지됩니다. Stage 5에서는 `PUBLIC`, `anon`, `authenticated`의 직접 테이블 권한을 회수하고 `service_role`의 기존 권한은 변경하지 않습니다. 서버 함수는 `SUPABASE_SECRET_KEY`로 테이블에 접근하고 API에서도 소유자를 다시 확인합니다.
 
-- `aleph.config.json`은 현재 `step: 6`과 원본 Supabase Data API 주소를 기록합니다. `data.json`과 `public/data.json`은 최신 저장소와 새 정적 배포물에서 제외하며, 배포 빌드는 `/aleph.json`을 생성합니다.
+- 5단계 당시 `aleph.config.json`에는 원본 Supabase Data API 주소를 기록했습니다. 현재 `step: 7`과 Production 별칭은 위 7단계 저장점에, 실제 배포 호스트와 커밋은 생성된 `/aleph.json`에 기록됩니다. `data.json`과 `public/data.json`은 최신 저장소와 새 정적 배포물에서 제외합니다.
 
 
 
