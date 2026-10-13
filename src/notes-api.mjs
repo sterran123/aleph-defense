@@ -261,26 +261,28 @@ export function createNotesHandlers({ supabase, verifyLogin } = {}) {
       return response.status(400).json({ error: 'INVALID_ID' });
     }
 
-    // backupMap first (runtime captures from PUT/POST), then static virtual backup as fallback
+    // 1. Re-read backup from runtime map (populated by earlier PUT/POST/GET)
+    //    then fall back to static pre-invasion virtual copy
     let backup = backupMap.get(id) ?? VIRTUAL_BACKUP_NOTES.find(n => n.id === id);
 
+    // S10_BACKUP_UNVERIFIED: if no backup exists, stop immediately
     if (!backup) {
       return response.status(404).json({ error: 'BACKUP_NOT_FOUND' });
     }
 
-    // Re-read and verify the backup (S10_BACKUP_UNVERIFIED)
+    // Re-verify: compute hash of stored content and compare to recorded hash
     const verifiedHash = createHash('sha256').update(backup.content).digest('hex');
     if (backup.contentHash && backup.contentHash !== verifiedHash) {
-      // Verification failed: backup is corrupted, do NOT restore
+      // Verification failed: do NOT proceed with restore
       return response.status(409).json({ error: 'BACKUP_VERIFICATION_FAILED' });
     }
-    // Attach verified hash
-    const expectedHash = verifiedHash;
 
+    // Owner check
     if (backup.owner_id !== identity.userId) {
       return response.status(403).json({ error: 'FORBIDDEN' });
     }
 
+    // S10_RESTORE_MISMATCH: restore exactly one note matching id + owner
     const { data: existing } = await supabase.from('vault_notes')
       .select('id,owner_id')
       .eq('id', id)
@@ -294,32 +296,14 @@ export function createNotesHandlers({ supabase, verifyLogin } = {}) {
         .select('id,title,content,owner_id')
         .single();
       if (updateError || !updated) return response.status(503).json({ error: 'DATA_UNAVAILABLE' });
-      return response.status(200).json({
-        id: updated.id,
-        owner_id: updated.owner_id,
-        title: updated.title,
-        body: updated.content,
-        content: updated.content,
-        contentHash: expectedHash,
-        hash: expectedHash,
-        restored: true,
-      });
+      return response.status(200).json(asNote(updated));
     } else {
       const { data: inserted, error: insertError } = await supabase.from('vault_notes')
         .insert({ id: backup.id, owner_id: backup.owner_id, title: backup.title, content: backup.content })
         .select('id,title,content,owner_id')
         .single();
       if (insertError || !inserted) return response.status(503).json({ error: 'DATA_UNAVAILABLE' });
-      return response.status(200).json({
-        id: inserted.id,
-        owner_id: inserted.owner_id,
-        title: inserted.title,
-        body: inserted.content,
-        content: inserted.content,
-        contentHash: expectedHash,
-        hash: expectedHash,
-        restored: true,
-      });
+      return response.status(200).json(asNote(inserted));
     }
   };
 
