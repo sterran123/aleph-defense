@@ -1,4 +1,11 @@
-# BYTE BACK 방어전 · 8단계 저장점
+# BYTE BACK 방어전 · 9단계 저장점
+
+## 9단계 저장점 · 도플갱어를 찾고 권한을 거둡니다
+
+- `aleph.config.json`은 `step: 9`, 기존 배포 주소와 로그인 발급자, 원본 API 주소를 보존합니다.
+- `src/detect.mjs`의 `detect(events)`는 가상 사건에서 가명 사용자의 10분 구간 다량 조회(120건 초과) 또는 평소와 다른 네트워크와 급증 조회가 함께 나타날 때 `action: "propose_revocation"`과 `reasonCode: "burst_read"`를 반환합니다.
+- 정상 조회 120건 이하 및 10분 밖으로 분산된 사건은 `action: "observe"`로 유지하며 임의로 권한을 변경하지 않습니다.
+- 로컬 확인: `npm run detect:test` 6개, `npm run test:stage8` 10개, `npm run test:r5` 2개, `npm run test:stage3` 6개 통과. 모두 가상·단위 시험이며 실제 엔진 연동, Production 배포 또는 심판 판정의 증거는 아닙니다.
 
 ## 8단계 저장점 · 자료마다 접근 구역 분리
 
