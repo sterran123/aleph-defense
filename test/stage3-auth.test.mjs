@@ -107,7 +107,10 @@ test('notes API rejects absent and malformed bearer tokens with JSON 401', async
 
 
 function createMemorySupabase(initialRows = []) {
-  const rows = structuredClone(initialRows);
+  const tables = {
+    vault_notes: structuredClone(initialRows),
+    vault_note_backups: [],
+  };
   const calls = [];
   const project = (row, columns) => {
     if (!row) return null;
@@ -116,14 +119,19 @@ function createMemorySupabase(initialRows = []) {
   };
   const supabase = {
     from(table) {
-      assert.equal(table, 'vault_notes');
+      assert.ok(Object.hasOwn(tables, table), `unexpected table ${table}`);
+      const rows = tables[table];
+      const key = table === 'vault_notes' ? 'id' : 'note_id';
       const query = { mode: 'select', filters: [], values: null, columns: null };
       const matches = row => query.filters.every(([column, value]) => row[column] === value);
       const execute = () => {
         if (query.mode === 'insert') {
-          if (rows.some(row => row.id === query.values.id)) return { data: null, error: { code: '23505' } };
-          const sortOrder = Math.max(0, ...rows.map(row => row.sort_order ?? 0)) + 1;
-          const row = { sort_order: sortOrder, created_at: '2026-10-10T00:00:00.000Z', ...query.values };
+          if (rows.some(row => row[key] === query.values[key])) return { data: null, error: { code: '23505' } };
+          const extra = table === 'vault_notes'
+            ? { sort_order: Math.max(0, ...rows.map(row => row.sort_order ?? 0)) + 1,
+              created_at: '2026-10-10T00:00:00.000Z' }
+            : { captured_at: '2026-10-10T00:00:00.000Z' };
+          const row = { ...extra, ...query.values };
           rows.push(row);
           return { data: project(row, query.columns), error: null };
         }
@@ -157,7 +165,7 @@ function createMemorySupabase(initialRows = []) {
       return builder;
     },
   };
-  return { supabase, rows, calls };
+  return { supabase, rows: tables.vault_notes, backups: tables.vault_note_backups, calls };
 }
 
 test('collection create and list use only the verified owner ID', async () => {
