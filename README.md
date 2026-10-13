@@ -1,4 +1,19 @@
-# BYTE BACK 방어전 · 11단계 저장점
+# BYTE BACK 방어전 · 12단계 저장점
+
+## 12단계 저장점 · 탈환 작전실을 완성합니다
+
+- `aleph.config.json`은 `step: 12`를 기록합니다. 작전실은 막는 도구가 아니라 보는 도구입니다.
+- **작전실 화면**: 승인된 기기에서만 열리는 `탈환 작전실` 패널(`public/index.html`, `public/app.js`)이 `GET /api/operations`의 응답만 표시합니다. 판정기 규칙(`policy.ruleIds`), 탐지 사건, 회수 상태, 복구 버전 요약 카드와 1~11단계 점검 표를 그대로 그립니다. 가상 메모 본문은 화면과 응답 어디에도 없습니다.
+- **41종 점검 표**: `src/operations-api.mjs`의 표는 단계·종류(정상/금지)·요청·기대 결과를 고정해 두고, 서버가 실제로 보낸 요청만 `measured`·실제 결과·요청 ID·확인 시각으로 채웁니다. 보내지 않은 시험은 `not_run`으로 남고 `actual`·`requestId`·`checkedAt`이 `null`입니다. `checkCounts`(total·measured·matched·notRun)는 항상 표 내용과 일치합니다.
+- **출처 구분**: `sources.student`은 학생 구현 파일(`src/decider.mjs`, `src/detect.mjs`, `src/policy-restore.mjs`)을, `sources.engine`은 `ALEPH SDP engine`을 적습니다. 엔진이 보낸 검증 사건이 없으면 `detection`·`revocation`·`engineRuntimeEvidence`는 `not_run`이며 임의로 채우지 않습니다.
+- **복구 버전**: `recovery` 요약은 `backups/step10/safe-policy.json`의 내용 해시를 응답 시점에 다시 검증한 결과와 버전·커밋 앞자리만 보고합니다.
+- **실행·중지·복구 안내**:
+  1. 설치: 저장소 루트에서 `npm ci` (Node ≥22). 브라우저에는 설치 프로그램이 따로 없고, 앱 설치는 manifest의 설치 버튼으로만 진행됩니다.
+  2. 실행: Vercel 배포는 `npm run build`가 `public/`을 만들며, 환경 변수 `SUPABASE_URL`·`SUPABASE_SECRET_KEY`·`SUPABASE_PUBLISHABLE_KEY`와 10단계 `RESTORE_NOTE_BACKUP_JSON`·`RESTORE_NOTE_BACKUP_SHA256`은 배포 플랫폼의 비밀 입력란에만 둡니다.
+  3. 학생 판정기·탐지 규칙 확인: `npm run decider:test`, `npm run detect:test` (가상 입력 연습이며 엔진 판정이 아닙니다).
+  4. 중지: 배포 주소의 정적 파일·서버 함수를 내리면 됩니다. 브라우저 쪽 세션은 `HttpOnly` 쿠키 만료 또는 로그아웃으로 끝나고, 기기 승인은 서버 `device_approvals` 행의 `status`를 `revoked`로 바꾸면 다음 요청부터 403으로 닫힙니다.
+  5. 복구: `npm run restore:plan`으로 사본과 현재 정책 차이를 보고 `npm run restore:apply -- --confirm=<버전>`으로 되돌립니다. 비공개 메모는 `POST /api/restore/notes/:id`가 환경 변수 사본만으로 복원합니다.
+- 로컬 확인: `npm run operations:test`(41종 표와 요약 수치 일치), `npm run device:test` 9개, `npm run test:stage10` 15개, `npm run test:stage3` 6개, `npm run test:stage8` 10개, `npm run test:package` 4개, `npm run test:r5` 2개 통과. 모두 가상·단위 시험이며 실제 엔진 연동, Production 배포 또는 심판 판정의 증거는 아닙니다.
 
 ## 11단계 저장점 · 나만의 접속 앱을 완성합니다
 
