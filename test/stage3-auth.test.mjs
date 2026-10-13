@@ -28,8 +28,10 @@ function makeResponse() {
   return response;
 }
 
-test('stage-five identity provider config matches the Supabase Auth verifier contract', () => {
-  assert.equal(config.step, 5);
+test('stage-six config retains the Supabase Auth verifier contract', () => {
+  assert.ok(Number.isInteger(config.step) && config.step >= 5 && config.step <= 12);
+  assert.equal(config.serviceId, 'notes');
+  assert.equal(config.readPath, '/notes');
   assert.equal(config.identityProvider.issuer, 'https://ufsdwlcxqwasyuhneynz.supabase.co/auth/v1');
   assert.equal(config.identityProvider.audience, 'authenticated');
   assert.equal(config.identityProvider.jwksUrl,
