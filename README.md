@@ -2,17 +2,22 @@
 
 ## 10단계 저장점 · 백업에서 자료실을 되살립니다
 
-- `aleph.config.json`은 `step: 10`, `restoreRoute: "/api/notes/restore"`를 기록합니다. `allowedRoutes`에 `POST /api/notes/restore`를 등록합니다.
-- `src/notes-api.mjs`는 최초 포착한 메모 사본만 보존하고, 복원할 때마다 비공개 사본 파일을 다시 읽어 ID·소유자·SHA-256을 확인합니다. 확인 뒤 소유자의 대상 메모 한 건만 복원하며 다른 메모·정책·감사 기록을 쓰지 않습니다.
+- `aleph.config.json`은 `step: 10`, `restoreRoute: "/api/notes/restore"`, `auditRoute: "/api/notes/audit"`를 기록합니다. `allowedRoutes`에 `POST /api/notes/restore`와 `GET /api/notes/audit`를 등록합니다.
+- 메모를 읽거나 고칠 때마다 `src/notes-api.mjs`가 침해 전 최초 상태를 비공개 사본으로 보존합니다. 사본은 데이터 저장소 안의 서비스 전용 행에만 기록되어 서버리스 인스턴스가 바뀌어도 살아 있으며, 어떤 사용자 경로로도 목록에 나타나지 않습니다.
+- 복원할 때마다 `POST /api/notes/restore`(본문 `{"id"}` 또는 경로 `/api/notes/restore/<id>`)가 사본을 **다시 읽어** ID·소유자·SHA-256 지문을 대조합니다. 사본이 없거나(404 `BACKUP_NOT_FOUND`) 지문이 틀리면(409 `BACKUP_VERIFICATION_FAILED`) 아무것도 쓰지 않고 멈춥니다. `GET` 또는 `{"dryRun":true}` 호출은 사본 버전과 바뀔 항목만 미리 보여 주고 쓰지 않습니다.
+- 복원은 지정한 한 건만 되돌립니다. 다른 메모·정책은 건드리지 않고, 생성·수정·삭제·복원·검증 거부는 감사 기록 행에 덧붙입니다. 복원 작업 자체도 `note.restore` 한 줄로 남습니다. `GET /api/notes/audit`는 호출자 본인의 감사 이력만 반환합니다.
+- 복원 응답의 `restore.retests`에는 복구 직후 실제로 다시 실행한 시험이 들어갑니다: 정상 요청(본인 메모 다시 읽기), 금지 요청(로그인 없는 목록, 위조 토큰, 검증 없는 공지 쓰기, 미등록 기기 판정). 실행하지 않은 시험은 결과를 채우지 않습니다.
 - `src/policy-backup.mjs`는 침해 전 검증된 안전 정책(버전 1, 규칙 `device_registered`, `step_up_required`, `resource_zone`)과 현재 시험 정책의 차이를 검사하고 안전 버전으로 복원합니다.
+- 로컬 연습 도구: `npm run backup`은 `local-vault.json`의 사본을 `backups/`에 지문 파일과 함께 저장하고, `npm run restore`는 사본 지문을 다시 읽어 검증한 뒤 바뀔 항목을 먼저 보여 주고 `--yes`로만 실제로 되돌립니다. 손댄 사본은 거부됩니다.
 - 복구 뒤 재실행 순서:
   1. `npm run test:r5` (배포 메타데이터 및 인증 검사)
   2. `npm run test:stage3` (소유자 격리 및 타인 접근 404 확인)
   3. `npm run test:stage8` (구역 분리 및 공지 쓰기 차단 확인)
   4. `npm run detect:test` (다량 조회 탐지 및 회수 제안 확인)
   5. `npm run decider:test` (등록 기기 허용 및 미등록 거부 확인)
-  6. `npm run test:stage10` (사본 재읽기·해시 일치·대상 외 메모 보존 확인)
-- 로컬 확인: `npm run detect:test` 6개, `npm run test:stage8` 10개, `npm run test:r5` 2개, `npm run test:stage3` 6개, `npm run test:stage10` 2개 통과. 모두 가상·단위 시험이며 실제 엔진 연동, Production 배포 또는 심판 판정의 증거는 아닙니다.
+  6. `npm run test:stage10` (사본 재읽기·해시 일치·감사 기록·대상 외 메모 보존 확인)
+  7. `npm run bundle` (배포 대상 공격 점검: 로그인 없는 목록·복원·감사 요청 거부 포함)
+- 로컬 확인: `npm run detect:test` 6개, `npm run test:stage8` 10개, `npm run test:r5` 2개, `npm run test:stage3` 6개, `npm run test:stage10` 9개 통과. 모두 가상·단위 시험이며 실제 엔진 연동, Production 배포 또는 심판 판정의 증거는 아닙니다.
 
 ## 9단계 저장점 · 도플갱어를 찾고 권한을 거둡니다
 

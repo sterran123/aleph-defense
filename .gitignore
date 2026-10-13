@@ -1,4 +1,6 @@
 artifacts/
+backups/
+local-vault.json
 bundle-notes.json
 .env
 .env.*

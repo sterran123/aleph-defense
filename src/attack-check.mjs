@@ -54,7 +54,7 @@ export async function runAttackChecks(config) {
     }
   }
   const nosniff = homepage?.headers.get('x-content-type-options')?.toLowerCase() || 'missing';
-  return [
+  const results = [
     { attackId: 'static_notes_file', expected: '/data.json is absent from the deployed static files',
       observed: `HTTP ${staticData?.status ?? 0}` },
     { attackId: 'anonymous_notes_api', expected: 'No-token API requests return JSON 401 or 403',
@@ -70,4 +70,26 @@ export async function runAttackChecks(config) {
     { attackId: 'nosniff_header', expected: 'The first-page response includes X-Content-Type-Options: nosniff',
       observed: nosniff },
   ];
+  if (config.step >= 10) {
+    const restoreRoute = typeof config.restoreRoute === 'string' && config.restoreRoute.startsWith('/')
+      ? config.restoreRoute : '/api/notes/restore';
+    const auditRoute = typeof config.auditRoute === 'string' && config.auditRoute.startsWith('/')
+      ? config.auditRoute : '/api/notes/audit';
+    const [anonymousRestore, invalidTokenRestore, anonymousAudit] = await Promise.all([
+      request(restoreRoute, null, 'POST'), request(restoreRoute, 'Bearer invalid.invalid.invalid', 'POST'),
+      request(auditRoute),
+    ]);
+    const [anonymousRestoreJsonError, invalidRestoreJsonError, anonymousAuditJsonError] = await Promise.all([
+      hasJsonError(anonymousRestore), hasJsonError(invalidTokenRestore), hasJsonError(anonymousAudit),
+    ]);
+    results.push(
+      { attackId: 'restore_anonymous', expected: 'No-token restore requests return JSON 401 or 403',
+        observed: `HTTP ${anonymousRestore?.status ?? 0}; JSON error ${anonymousRestoreJsonError}` },
+      { attackId: 'restore_invalid_token', expected: 'Malformed bearer tokens cannot trigger restore and return JSON 401 or 403',
+        observed: `HTTP ${invalidTokenRestore?.status ?? 0}; JSON error ${invalidRestoreJsonError}` },
+      { attackId: 'audit_anonymous', expected: 'No-token audit log reads return JSON 401 or 403',
+        observed: `HTTP ${anonymousAudit?.status ?? 0}; JSON error ${anonymousAuditJsonError}` },
+    );
+  }
+  return results;
 }

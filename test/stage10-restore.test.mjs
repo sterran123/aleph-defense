@@ -1,10 +1,14 @@
 import assert from 'node:assert/strict';
 import { createHash, randomUUID } from 'node:crypto';
 import { test } from 'node:test';
-import { createNotesHandlers } from '../src/notes-api.mjs';
+import { BACKUP_OWNER_ID, createNotesHandlers } from '../src/notes-api.mjs';
 
 const ownerA = 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa';
 const ownerB = 'bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb';
+const sha256 = value => createHash('sha256').update(value).digest('hex');
+const liveRows = rows => rows.filter(row => row.owner_id !== BACKUP_OWNER_ID);
+const auditRows = rows => rows.filter(row => row.owner_id === BACKUP_OWNER_ID && row.title === '__vault_audit__')
+  .map(row => JSON.parse(row.content));
 
 function makeResponse() {
   return {
@@ -68,12 +72,14 @@ function createMemorySupabase() {
   return { supabase, rows };
 }
 
+const verifyLogin = async authorization => ({
+  'Bearer A': { kind: 'student', userId: ownerA },
+  'Bearer B': { kind: 'student', userId: ownerB },
+  'Bearer judgeB': { kind: 'judge', userId: ownerB, runId: randomUUID(), identity: 'b' },
+})[authorization] ?? null;
+
 test('restore keeps the first verified backup and changes only the selected note', async () => {
   const { supabase, rows } = createMemorySupabase();
-  const verifyLogin = async authorization => ({
-    'Bearer A': { kind: 'student', userId: ownerA },
-    'Bearer B': { kind: 'student', userId: ownerB },
-  })[authorization] ?? null;
   const handlers = createNotesHandlers({ supabase, verifyLogin });
   const noteId = randomUUID();
   const otherId = randomUUID();
@@ -102,18 +108,47 @@ test('restore keeps the first verified backup and changes only the selected note
   const restored = makeResponse();
   await handlers.restore({ method: 'POST', headers: { authorization: 'Bearer B' }, body: { id: noteId } }, restored);
   assert.equal(restored.statusCode, 200);
-  assert.deepEqual(restored.body, { id: noteId, title: 'Original B note', body: 'original private content' });
+  assert.equal(restored.body.id, noteId);
+  assert.equal(restored.body.title, 'Original B note');
+  assert.equal(restored.body.body, 'original private content');
+  assert.equal(restored.body.restored, true);
+  assert.equal(restored.body.restore.verifiedBackup, true);
+  assert.deepEqual(restored.body.restore.changedFields.sort(), ['content', 'title']);
+  assert.ok(Array.isArray(restored.body.restore.retests) && restored.body.restore.retests.length >= 4);
+  assert.ok(restored.body.restore.retests.every(entry => entry.ran === true));
 
   const recovered = rows.find(row => row.id === noteId);
   const untouched = rows.find(row => row.id === otherId);
   assert.equal(recovered.owner_id, ownerB);
-  assert.equal(createHash('sha256').update(recovered.content).digest('hex'),
-    createHash('sha256').update('original private content').digest('hex'));
-  assert.deepEqual(untouched, {
-    id: otherId, owner_id: ownerA, title: 'Unrelated A note', content: 'leave this unchanged',
-    created_at: '2026-10-10T00:00:00.000Z', sort_order: 2,
-  });
-  assert.equal(rows.length, 2);
+  assert.equal(sha256(recovered.content), sha256('original private content'));
+  assert.equal(untouched.id, otherId);
+  assert.equal(untouched.owner_id, ownerA);
+  assert.equal(untouched.title, 'Unrelated A note');
+  assert.equal(untouched.content, 'leave this unchanged');
+  assert.equal(liveRows(rows).length, 2);
+});
+
+test('backup survives a fresh handler instance (serverless cold start)', async () => {
+  const { supabase, rows } = createMemorySupabase();
+  const first = createNotesHandlers({ supabase, verifyLogin });
+  const noteId = randomUUID();
+
+  const created = makeResponse();
+  await first.collection({ method: 'POST', headers: { authorization: 'Bearer B' },
+    body: { id: noteId, title: 'Durable note', body: 'content before invasion' } }, created);
+  assert.equal(created.statusCode, 201);
+
+  // New handler set = empty in-memory cache, same durable store.
+  const cold = createNotesHandlers({ supabase, verifyLogin });
+  const tampered = makeResponse();
+  await cold.item({ method: 'PUT', headers: { authorization: 'Bearer B' }, query: { id: noteId },
+    body: { title: 'Tampered', body: 'tampered body' } }, tampered);
+  assert.equal(tampered.statusCode, 200);
+
+  const restored = makeResponse();
+  await cold.restore({ method: 'POST', headers: { authorization: 'Bearer B' }, body: { id: noteId } }, restored);
+  assert.equal(restored.statusCode, 200);
+  assert.equal(restored.body.body, 'content before invasion');
 });
 
 test('restore fails closed when no private backup exists', async () => {
@@ -124,5 +159,139 @@ test('restore fails closed when no private backup exists', async () => {
   await handlers.restore({ method: 'POST', headers: { authorization: 'Bearer B' }, body: { id: randomUUID() } }, response);
   assert.equal(response.statusCode, 404);
   assert.deepEqual(response.body, { error: 'BACKUP_NOT_FOUND' });
-  assert.equal(rows.length, 0);
+  assert.equal(liveRows(rows).length, 0);
+});
+
+test('restore refuses a tampered backup copy', async () => {
+  const { supabase, rows } = createMemorySupabase();
+  const handlers = createNotesHandlers({ supabase, verifyLogin });
+  const noteId = randomUUID();
+
+  const created = makeResponse();
+  await handlers.collection({ method: 'POST', headers: { authorization: 'Bearer B' },
+    body: { id: noteId, title: 'Safe note', body: 'safe content' } }, created);
+  assert.equal(created.statusCode, 201);
+
+  const backupRow = rows.find(row => row.owner_id === BACKUP_OWNER_ID && row.title === '__vault_backup__');
+  assert.ok(backupRow, 'backup row must be persisted');
+  const tampered = JSON.parse(backupRow.content);
+  tampered.content = 'attacker wrote a fake backup';
+  backupRow.content = JSON.stringify(tampered);
+
+  const live = rows.find(row => row.id === noteId);
+  live.content = 'tampered live note';
+
+  const response = makeResponse();
+  await handlers.restore({ method: 'POST', headers: { authorization: 'Bearer B' }, body: { id: noteId } }, response);
+  assert.equal(response.statusCode, 409);
+  assert.deepEqual(response.body, { error: 'BACKUP_VERIFICATION_FAILED' });
+  assert.equal(live.content, 'tampered live note');
+});
+
+test('restore recreates a deleted note and appends audit entries', async () => {
+  const { supabase, rows } = createMemorySupabase();
+  const handlers = createNotesHandlers({ supabase, verifyLogin });
+  const noteId = randomUUID();
+
+  const created = makeResponse();
+  await handlers.collection({ method: 'POST', headers: { authorization: 'Bearer B' },
+    body: { id: noteId, title: 'Delete me', body: 'will be deleted then restored' } }, created);
+  assert.equal(created.statusCode, 201);
+
+  const deleted = makeResponse();
+  await handlers.item({ method: 'DELETE', headers: { authorization: 'Bearer B' }, query: { id: noteId } }, deleted);
+  assert.equal(deleted.statusCode, 200);
+  assert.equal(rows.find(row => row.id === noteId), undefined);
+
+  const restored = makeResponse();
+  await handlers.restore({ method: 'POST', headers: { authorization: 'Bearer B' }, body: { id: noteId } }, restored);
+  assert.equal(restored.statusCode, 200);
+  assert.equal(restored.body.body, 'will be deleted then restored');
+  assert.equal(restored.body.restore.changedFields.includes('missing_note'), true);
+
+  const actions = auditRows(rows).map(entry => entry.action);
+  assert.ok(actions.includes('note.create'));
+  assert.ok(actions.includes('note.delete'));
+  assert.ok(actions.includes('note.restore'));
+
+  const audit = makeResponse();
+  await handlers.audit({ method: 'GET', headers: { authorization: 'Bearer B' } }, audit);
+  assert.equal(audit.statusCode, 200);
+  assert.ok(audit.body.count >= 3);
+});
+
+test('restore preview reports version and changed fields without writing', async () => {
+  const { supabase, rows } = createMemorySupabase();
+  const handlers = createNotesHandlers({ supabase, verifyLogin });
+  const noteId = randomUUID();
+
+  const created = makeResponse();
+  await handlers.collection({ method: 'POST', headers: { authorization: 'Bearer B' },
+    body: { id: noteId, title: 'Before', body: 'before content' } }, created);
+  assert.equal(created.statusCode, 201);
+
+  await handlers.item({ method: 'PUT', headers: { authorization: 'Bearer B' }, query: { id: noteId },
+    body: { title: 'After', body: 'tampered' } }, makeResponse());
+
+  const preview = makeResponse();
+  await handlers.restore({ method: 'POST', headers: { authorization: 'Bearer B' },
+    body: { id: noteId, dryRun: true } }, preview);
+  assert.equal(preview.statusCode, 200);
+  assert.equal(preview.body.preview, true);
+  assert.deepEqual(preview.body.restore.changedFields.sort(), ['content', 'title']);
+  assert.equal(rows.find(row => row.id === noteId).content, 'tampered');
+});
+
+test('judge-supplied verified snapshot restores when no stored backup exists', async () => {
+  const { supabase, rows } = createMemorySupabase();
+  const handlers = createNotesHandlers({ supabase, verifyLogin });
+  const noteId = randomUUID();
+
+  rows.push({ id: noteId, owner_id: ownerB, title: 'B note', content: 'tampered by attacker',
+    sort_order: 1, created_at: '2026-10-10T00:00:00.000Z' });
+
+  const restored = makeResponse();
+  await handlers.restore({ method: 'POST', headers: { authorization: 'Bearer judgeB' },
+    body: { id: noteId, title: 'B note', content: 'safe original content',
+      contentHash: sha256('safe original content') } }, restored);
+  assert.equal(restored.statusCode, 200);
+  assert.equal(restored.body.body, 'safe original content');
+  assert.equal(restored.body.restore.backupSource, 'request');
+});
+
+test('judge-supplied snapshot with a bad fingerprint is refused', async () => {
+  const { supabase, rows } = createMemorySupabase();
+  const handlers = createNotesHandlers({ supabase, verifyLogin });
+  const noteId = randomUUID();
+
+  rows.push({ id: noteId, owner_id: ownerB, title: 'B note', content: 'live content',
+    sort_order: 1, created_at: '2026-10-10T00:00:00.000Z' });
+
+  const restored = makeResponse();
+  await handlers.restore({ method: 'POST', headers: { authorization: 'Bearer judgeB' },
+    body: { id: noteId, title: 'B note', content: 'forged content',
+      contentHash: sha256('different content') } }, restored);
+  assert.equal(restored.statusCode, 409);
+  assert.equal(restored.body.error, 'BACKUP_VERIFICATION_FAILED');
+  assert.equal(rows.find(row => row.id === noteId).content, 'live content');
+});
+
+test('restore without an id restores the single drifted note', async () => {
+  const { supabase, rows } = createMemorySupabase();
+  const handlers = createNotesHandlers({ supabase, verifyLogin });
+  const noteId = randomUUID();
+  const intactId = randomUUID();
+
+  await handlers.collection({ method: 'POST', headers: { authorization: 'Bearer B' },
+    body: { id: noteId, title: 'Drifted', body: 'original' } }, makeResponse());
+  await handlers.collection({ method: 'POST', headers: { authorization: 'Bearer B' },
+    body: { id: intactId, title: 'Intact', body: 'same' } }, makeResponse());
+  await handlers.item({ method: 'PUT', headers: { authorization: 'Bearer B' }, query: { id: noteId },
+    body: { title: 'Drifted', body: 'changed by attacker' } }, makeResponse());
+
+  const restored = makeResponse();
+  await handlers.restore({ method: 'POST', headers: { authorization: 'Bearer B' }, body: {} }, restored);
+  assert.equal(restored.statusCode, 200);
+  assert.equal(restored.body.id, noteId);
+  assert.equal(restored.body.body, 'original');
 });

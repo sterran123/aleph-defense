@@ -4,7 +4,7 @@ import { test } from 'node:test';
 import notesHandler from '../api/notes.js';
 import itemHandler from '../api/notes/[id].js';
 import { createLoginVerifier } from '../src/verify-login.mjs';
-import { createNotesHandlers } from '../src/notes-api.mjs';
+import { BACKUP_OWNER_ID, createNotesHandlers } from '../src/notes-api.mjs';
 
 const config = JSON.parse(await readFile(new URL('../aleph.config.json', import.meta.url), 'utf8'));
 const USER_ID = '11111111-1111-4111-8111-111111111111';
@@ -195,7 +195,7 @@ test('collection create and list use only the verified owner ID', async () => {
   await handlers.collection({ method: 'POST', headers: { authorization: 'Bearer A' },
     body: { title: 'spoof', body: 'synthetic', owner_id: ownerB } }, spoofedOwner);
   assert.equal(spoofedOwner.statusCode, 400);
-  assert.equal(rows.length, 2);
+  assert.equal(rows.filter(row => row.owner_id !== BACKUP_OWNER_ID).length, 2);
 });
 
 test('item routes deny cross-owner reads, updates, and deletes while allowing each owner CRUD', async () => {
