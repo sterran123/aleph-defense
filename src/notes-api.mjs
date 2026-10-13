@@ -39,30 +39,8 @@ function asNote(row) {
   return { id: row.id, title: row.title, body: row.content };
 }
 
-const VIRTUAL_BACKUP_NOTES = Object.freeze([
-  {
-    id: 'cccccccc-cccc-4ccc-8ccc-cccccccccccc',
-    owner_id: 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa',
-    title: 'A note',
-    content: 'synthetic A body',
-  },
-  {
-    id: 'dddddddd-dddd-4ddd-8ddd-dddddddddddd',
-    owner_id: 'bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb',
-    title: 'B note',
-    content: 'synthetic B body',
-  },
-]);
-
-const BACKUP_FILE = typeof process !== 'undefined' && process.platform === 'win32'
-  ? 'C:\\Windows\\Temp\\vault_notes_backup.json'
-  : '/tmp/vault_notes_backup.json';
+const BACKUP_FILE = '/tmp/vault_notes_backup.json';
 const backupMap = new Map();
-
-for (const note of VIRTUAL_BACKUP_NOTES) {
-  const contentHash = createHash('sha256').update(note.content).digest('hex');
-  backupMap.set(note.id, { ...note, contentHash, savedAt: new Date().toISOString() });
-}
 
 function loadBackups() {
   try {
@@ -261,9 +239,8 @@ export function createNotesHandlers({ supabase, verifyLogin } = {}) {
       return response.status(400).json({ error: 'INVALID_ID' });
     }
 
-    // 1. Re-read backup from runtime map (populated by earlier PUT/POST/GET)
-    //    then fall back to static pre-invasion virtual copy
-    let backup = backupMap.get(id) ?? VIRTUAL_BACKUP_NOTES.find(n => n.id === id);
+    // Re-read backup from runtime map (populated by earlier PUT/POST/GET/DELETE)
+    let backup = backupMap.get(id);
 
     // S10_BACKUP_UNVERIFIED: if no backup exists, stop immediately
     if (!backup) {
