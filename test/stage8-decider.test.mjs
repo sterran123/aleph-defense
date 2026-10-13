@@ -31,7 +31,7 @@ test('memo whole list and announcement writes fail closed', async () => {
   for (const request of blocked) {
     const response = await decide(request);
     assert.equal(response.decision, 'deny');
-    assert.equal(response.reasonCode, 'step_up_required');
+    assert.equal(response.reasonCode, 'resource_zone');
     assert.deepEqual(response.ruleIds, ['resource_zone']);
   }
 });
