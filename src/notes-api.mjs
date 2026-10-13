@@ -1,5 +1,7 @@
 import { createHash, randomUUID } from 'node:crypto';
 import { readFileSync, writeFileSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
 import { createClient } from '@supabase/supabase-js';
 import { createLoginVerifier } from './verify-login.mjs';
 import config from '../aleph.config.json' with { type: 'json' };
@@ -39,28 +41,38 @@ function asNote(row) {
   return { id: row.id, title: row.title, body: row.content };
 }
 
-const BACKUP_FILE = '/tmp/vault_notes_backup.json';
+const BACKUP_FILE = join(tmpdir(), 'vault_notes_backup.json');
 const backupMap = new Map();
 
-function loadBackups() {
+function readBackupEntries() {
   try {
-    const raw = readFileSync(BACKUP_FILE, 'utf8');
-    const entries = JSON.parse(raw);
-    for (const [id, record] of entries) {
-      backupMap.set(id, record);
+    const entries = JSON.parse(readFileSync(BACKUP_FILE, 'utf8'));
+    return Array.isArray(entries) ? entries : null;
+  } catch {
+    return null;
+  }
+}
+
+function loadBackups() {
+  const entries = readBackupEntries();
+  if (!entries) return;
+  for (const entry of entries) {
+    if (Array.isArray(entry) && typeof entry[0] === 'string' && entry[1] && typeof entry[1] === 'object') {
+      backupMap.set(entry[0], entry[1]);
     }
-  } catch {}
+  }
 }
 loadBackups();
 
 function persistBackups() {
   try {
-    writeFileSync(BACKUP_FILE, JSON.stringify([...backupMap.entries()]), 'utf8');
+    writeFileSync(BACKUP_FILE, JSON.stringify([...backupMap.entries()]), { encoding: 'utf8', mode: 0o600 });
   } catch {}
 }
 
 function saveNoteBackup(id, owner_id, title, content) {
   if (!id || !owner_id || typeof title !== 'string' || typeof content !== 'string') return;
+  if (backupMap.has(id)) return; // keep earliest (pre-invasion) copy only
   const contentHash = createHash('sha256').update(content).digest('hex');
   const record = { id, owner_id, title, content, contentHash, savedAt: new Date().toISOString() };
   backupMap.set(id, record);
@@ -239,49 +251,60 @@ export function createNotesHandlers({ supabase, verifyLogin } = {}) {
       return response.status(400).json({ error: 'INVALID_ID' });
     }
 
-    // Re-read backup from runtime map (populated by earlier PUT/POST/GET/DELETE)
-    let backup = backupMap.get(id);
+    // Re-read the private backup file for every restore; never trust a client-supplied copy.
+    const entries = readBackupEntries();
+    const backupEntry = entries?.find(entry => Array.isArray(entry) && entry[0] === id);
+    const backup = backupEntry?.[1];
 
-    // S10_BACKUP_UNVERIFIED: if no backup exists, stop immediately
+    // S10_BACKUP_UNVERIFIED: missing, malformed, or unverifiable copies fail closed.
     if (!backup) {
       return response.status(404).json({ error: 'BACKUP_NOT_FOUND' });
     }
-
-    // Re-verify: compute hash of stored content and compare to recorded hash
+    if (backup.id !== id || backup.owner_id !== identity.userId
+        || typeof backup.title !== 'string' || typeof backup.content !== 'string'
+        || typeof backup.contentHash !== 'string' || !/^[a-f0-9]{64}$/iu.test(backup.contentHash)) {
+      return response.status(409).json({ error: 'BACKUP_VERIFICATION_FAILED' });
+    }
     const verifiedHash = createHash('sha256').update(backup.content).digest('hex');
-    if (backup.contentHash && backup.contentHash !== verifiedHash) {
-      // Verification failed: do NOT proceed with restore
+    if (backup.contentHash !== verifiedHash) {
       return response.status(409).json({ error: 'BACKUP_VERIFICATION_FAILED' });
     }
 
-    // Owner check
-    if (backup.owner_id !== identity.userId) {
-      return response.status(403).json({ error: 'FORBIDDEN' });
-    }
-
-    // S10_RESTORE_MISMATCH: restore exactly one note matching id + owner
-    const { data: existing } = await supabase.from('vault_notes')
+    const { data: existing, error: readError } = await supabase.from('vault_notes')
       .select('id,owner_id')
       .eq('id', id)
       .maybeSingle();
+    if (readError) return response.status(503).json({ error: 'DATA_UNAVAILABLE' });
+    if (existing && existing.owner_id !== identity.userId) {
+      return response.status(404).json({ error: 'NOTE_NOT_FOUND' });
+    }
 
+    // Restore exactly one row. No policy or audit tables are written here.
+    let restored;
     if (existing) {
-      const { data: updated, error: updateError } = await supabase.from('vault_notes')
+      const { data, error } = await supabase.from('vault_notes')
         .update({ title: backup.title, content: backup.content })
         .eq('id', id)
         .eq('owner_id', identity.userId)
         .select('id,title,content,owner_id')
         .single();
-      if (updateError || !updated) return response.status(503).json({ error: 'DATA_UNAVAILABLE' });
-      return response.status(200).json(asNote(updated));
+      if (error || !data) return response.status(503).json({ error: 'DATA_UNAVAILABLE' });
+      restored = data;
     } else {
-      const { data: inserted, error: insertError } = await supabase.from('vault_notes')
+      const { data, error } = await supabase.from('vault_notes')
         .insert({ id: backup.id, owner_id: backup.owner_id, title: backup.title, content: backup.content })
         .select('id,title,content,owner_id')
         .single();
-      if (insertError || !inserted) return response.status(503).json({ error: 'DATA_UNAVAILABLE' });
-      return response.status(200).json(asNote(inserted));
+      if (error || !data) return response.status(503).json({ error: 'DATA_UNAVAILABLE' });
+      restored = data;
     }
+
+    const restoredHash = typeof restored.content === 'string'
+      ? createHash('sha256').update(restored.content).digest('hex') : null;
+    if (restored.id !== id || restored.owner_id !== identity.userId || restoredHash !== verifiedHash) {
+      return response.status(503).json({ error: 'RESTORE_VERIFICATION_FAILED' });
+    }
+    return response.status(200).json(asNote(restored));
   };
 
   return Object.freeze({ collection, item, announcement, restore });
