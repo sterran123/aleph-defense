@@ -1,4 +1,17 @@
-# BYTE BACK 방어전 · 9단계 저장점
+# BYTE BACK 방어전 · 10단계 저장점
+
+## 10단계 저장점 · 백업에서 자료실을 되살립니다
+
+- `aleph.config.json`은 `step: 10`, `restoreRoute: "/api/notes/restore"`를 기록합니다. `allowedRoutes`에 `POST /api/notes/restore`를 등록합니다.
+- `src/notes-api.mjs`의 `routeRestore`는 인증된 소유자의 단일 메모를 비공개 사본(ID·소유자·내용 해시)과 대조해 복원합니다. 다른 메모와 감사 기록은 보존합니다.
+- `src/policy-backup.mjs`는 침해 전 검증된 안전 정책(버전 1, 규칙 `device_registered`, `step_up_required`, `resource_zone`)과 현재 시험 정책의 차이를 검사하고 안전 버전으로 복원합니다.
+- 복구 뒤 재실행 순서:
+  1. `npm run test:r5` (배포 메타데이터 및 인증 검사)
+  2. `npm run test:stage3` (소유자 격리 및 타인 접근 404 확인)
+  3. `npm run test:stage8` (구역 분리 및 공지 쓰기 차단 확인)
+  4. `npm run detect:test` (다량 조회 탐지 및 회수 제안 확인)
+  5. `npm run decider:test` (등록 기기 허용 및 미등록 거부 확인)
+- 로컬 확인: `npm run detect:test` 6개, `npm run test:stage8` 10개, `npm run test:r5` 2개, `npm run test:stage3` 6개 통과. 모두 가상·단위 시험이며 실제 엔진 연동, Production 배포 또는 심판 판정의 증거는 아닙니다.
 
 ## 9단계 저장점 · 도플갱어를 찾고 권한을 거둡니다
 
