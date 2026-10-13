@@ -9,6 +9,7 @@
     "test:stage3": "node --test test/stage3-auth.test.mjs",
     "test:stage8": "node --test test/resource-ids.test.mjs test/stage8-decider.test.mjs test/stage8-api.test.mjs",
     "test:stage10": "node --test test/stage10-restore.test.mjs",
+    "test:stage10:retest": "npm run test:r5 && npm run test:stage3 && npm run test:stage8 && npm run detect:test && npm run decider:test && npm run test:stage10",
     "bundle": "node scripts/bundle.mjs",
     "decider:test": "node scripts/decider-test.mjs",
     "detect:test": "node scripts/detect-test.mjs",
