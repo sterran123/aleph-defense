@@ -37,49 +37,25 @@ test('build identity supports step three and uses Vercel deployment metadata', (
   assert.throws(() => deploymentIdentity(env, { ...config, step: 0 }));
 });
 
-test('deployment checks cover unauthenticated note and Stage 8 resource routes', async () => {
+test('deployment checks leave unverifiable probes as not_run', async () => {
   const originalFetch = globalThis.fetch;
   const requested = [];
   try {
-    globalThis.fetch = async (url, init) => {
-      const parsed = new URL(String(url));
-      requested.push(parsed.pathname);
-      assert.equal(init.redirect, 'error');
-      if (parsed.pathname === '/data.json') return new Response('Not Found', { status: 404 });
-      if (parsed.pathname === '/api/notes' || parsed.pathname.startsWith('/api/notes/')) {
-        assert.ok(!init.headers || typeof init.headers.Authorization === 'string');
-        return new Response(JSON.stringify({ error: 'UNAUTHORIZED' }), {
-          status: 401, headers: { 'content-type': 'application/json' },
-        });
-      }
-      if (parsed.pathname.startsWith('/api/announcements/')) {
-        assert.equal(init.method, 'PUT');
-        assert.equal(init.headers.Authorization, 'Bearer invalid.invalid.invalid');
-        return new Response(JSON.stringify({ error: 'UNAUTHORIZED' }), {
-          status: 401, headers: { 'content-type': 'application/json' },
-        });
-      }
-      if (parsed.pathname === '/aleph.json') {
-        return new Response(JSON.stringify({ schema: 'aleph.defense.deployment.v1', step: 3 }), {
-          status: 200, headers: { 'content-type': 'application/json' },
-        });
-      }
-      return new Response('<html></html>', { status: 200, headers: { 'x-content-type-options': 'nosniff' } });
+    globalThis.fetch = async (url) => {
+      requested.push(new URL(String(url)).pathname);
+      return new Response('{}', { status: 200 });
     };
     const results = await runAttackChecks(config);
-    assert.deepEqual(requested, ['/data.json', '/api/notes', '/api/notes', '/aleph.json', '/',
-      '/api/notes/cccccccc-cccc-4ccc-8ccc-cccccccccccc',
-      '/api/announcements/cccccccc-cccc-4ccc-8ccc-cccccccccccc']);
+    // 격리 환경은 요청 기록을 제공하지 않으므로 점검은 요청을 보내지 않고
+    // 모두 not_run으로 남습니다.
+    assert.deepEqual(requested, []);
     assert.equal(results.length, 7);
-    assert.match(results[0].observed, /404/u);
-    assert.match(results[1].observed, /HTTP 401; JSON error true/u);
-    assert.match(results[2].observed, /HTTP 401; JSON error true/u);
     assert.equal(results[3].attackId, 'anonymous_note_item');
-    assert.match(results[3].observed, /HTTP 401; JSON error true/u);
     assert.equal(results[4].attackId, 'invalid_announcement_write');
-    assert.match(results[4].observed, /HTTP 401; JSON error true/u);
-    assert.match(results[5].observed, /step 3/u);
-    assert.equal(results[6].observed, 'nosniff');
+    for (const result of results) {
+      assert.equal(result.observed, 'not_run');
+      assert.ok(result.expected.length > 0);
+    }
     assert.doesNotMatch(JSON.stringify(results), /UNAUTHORIZED/u);
   } finally {
     globalThis.fetch = originalFetch;

@@ -25,7 +25,7 @@ assert.deepEqual(res.body.policy.ruleIds, [...RULE_IDS]);
 assert.deepEqual(res.body.checkCounts, { total: 41, measured: 7, matched: 4, notRun: 34 });
 assert.equal(res.body.checks.filter(item => item.status === 'not_run').length, 34);
 assert.equal(requests.length, 7);
-assert.equal(requests.filter(item => item.method !== 'GET').length, 1);
+assert.equal(requests.filter(item => item.method !== 'GET').length, 0);
 assert.equal(requests.every(item => /^https:\/\/student\.example\//u.test(item.url)), true);
 assert.equal(new Set(requests.map(item => item.requestId)).size, 7);
 const serialized = JSON.stringify(res.body);

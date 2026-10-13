@@ -5,7 +5,11 @@
 - `aleph.config.json`은 `step: 12`를 기록합니다. 작전실은 막는 도구가 아니라 보는 도구입니다.
 - **작전실 화면**: 승인된 기기에서만 열리는 `탈환 작전실` 패널(`public/index.html`, `public/app.js`)이 `GET /api/operations`의 응답만 표시합니다. 판정기 규칙(`policy.ruleIds`), 탐지 사건, 회수 상태, 복구 버전 요약 카드와 1~11단계 점검 표를 그대로 그립니다. 가상 메모 본문은 화면과 응답 어디에도 없습니다.
 - **41종 점검 표**: `src/operations-api.mjs`의 표는 단계·종류(정상/금지)·요청·기대 결과를 고정해 두고, 서버가 실제로 보낸 요청만 `measured`·실제 결과·요청 ID·확인 시각으로 채웁니다. 보내지 않은 시험은 `not_run`으로 남고 `actual`·`requestId`·`checkedAt`이 `null`입니다. `checkCounts`(total·measured·matched·notRun)는 항상 표 내용과 일치합니다.
-- **출처 구분**: `sources.student`은 학생 구현 파일(`src/decider.mjs`, `src/detect.mjs`, `src/policy-restore.mjs`)을, `sources.engine`은 `ALEPH SDP engine`을 적습니다. 엔진이 보낸 검증 사건이 없으면 `detection`·`revocation`·`engineRuntimeEvidence`는 `not_run`이며 임의로 채우지 않습니다.
+- **출처 구분**: 응답의 `sources`가 학생 작업과 제공 엔진을 나눕니다.
+  - **학생 작업**: `src/decider.mjs`의 판정 규칙, `src/detect.mjs`의 탐지 규칙, `src/policy-restore.mjs`의 복구 검증, 자료실 API, PWA·작전실 화면은 학생이 만든 코드입니다.
+  - **제공 엔진**: 신원·기기·경로 검증과 실제 사건 전달·회수는 제공된 **ALEPH SDP 엔진**이 담당하며 학생 코드가 아닙니다.
+  - 엔진이 보낸 검증 사건이 없으면 `detection`·`revocation`·`engineRuntimeEvidence`는 `not_run`이며 임의로 채우지 않습니다.
+- **자기 점검 구분**: `npm run bundle`의 `attackAttempts`는 격리 심판이 요청 기록을 제공하지 않으므로 모든 항목을 `not_run`으로만 남깁니다. 작전실 서버의 실측 7건과 제출 격리 환경의 미실행 기록을 합치거나 성공으로 승격하지 않습니다.
 - **복구 버전**: `recovery` 요약은 `backups/step10/safe-policy.json`의 내용 해시를 응답 시점에 다시 검증한 결과와 버전·커밋 앞자리만 보고합니다.
 - **실행·중지·복구 안내**:
   1. 설치: 저장소 루트에서 `npm ci` (Node ≥22). 브라우저에는 설치 프로그램이 따로 없고, 앱 설치는 manifest의 설치 버튼으로만 진행됩니다.
