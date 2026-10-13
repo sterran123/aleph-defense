@@ -37,12 +37,14 @@ export function resourceIdForDecisionRequest(request) {
     if (method === 'GET' && path === '/notes' && route === 'GET /notes') return RESOURCE_IDS.notes;
     if (method === 'POST' && path === '/notes' && route === 'POST /notes') return RESOURCE_IDS.notes;
     if (['GET', 'PUT', 'DELETE'].includes(method) && NOTE_ITEM_PATH.test(path ?? '')
+        && path !== '/notes/export'
         && route === `${method} /notes/:id`) return RESOURCE_IDS.notes;
     return null;
   }
   if (service === RESOURCE_IDS.instructorAnnouncements
       && ['GET', 'PUT', 'DELETE'].includes(method)
       && ANNOUNCEMENT_ITEM_PATH.test(path ?? '')
+      && path !== '/announcements/export'
       && route === `${method} /announcements/:id`) {
     return RESOURCE_IDS.instructorAnnouncements;
   }
