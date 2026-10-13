@@ -51,7 +51,40 @@ function hasVerifiedAccessContext(request) {
 
 function hasZoneAccess(request, resourceId) {
   if (!hasVerifiedAccessContext(request)) return false;
-  return resourceId === RESOURCE_IDS.notes;
+  const { path, route, method, service } = request ?? {};
+
+  // 1. 알 수 없는 경로 및 기능 경로는 거부
+  if (typeof path !== 'string' || !path.trim()) return false;
+  if (path.includes('export') || path.includes('..') || path.includes('//')) return false;
+
+  // 2. 메모 전체 목록 경로(여러 사람의 자료를 한꺼번에 여는 경로)는 판정기에서 무조건 거부
+  if (path === '/notes' || route === 'GET /notes') {
+    return false;
+  }
+
+  // 3. 반 공지나 강사 자료에 대한 쓰기(POST·PUT·PATCH·DELETE)는 누구에게나 거부
+  if (service === RESOURCE_IDS.instructorAnnouncements || resourceId === RESOURCE_IDS.instructorAnnouncements || path.startsWith('/announcements')) {
+    if (['POST', 'PUT', 'PATCH', 'DELETE'].includes(method)) {
+      return false;
+    }
+    return method === 'GET' && route === 'GET /announcements/:id';
+  }
+
+  // 4. 메모 자원: 단일 메모(GET/PUT/DELETE /notes/:id)
+  if (service === RESOURCE_IDS.notes || resourceId === RESOURCE_IDS.notes) {
+    if (['GET', 'PUT', 'DELETE'].includes(method) && route === `${method} /notes/:id`) {
+      const match = /^\/notes\/([A-Za-z0-9][A-Za-z0-9._~-]{0,255})$/u.exec(path);
+      if (!match) return false;
+      const itemId = match[1];
+      if (itemId === 'export') return false;
+
+      // 메모 한 건의 주인 비교는 API가 하므로 판정기에서는 허용
+      return true;
+    }
+    return false;
+  }
+
+  return false;
 }
 
 export async function decide(request) {
