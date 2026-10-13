@@ -51,32 +51,30 @@ function hasVerifiedAccessContext(request) {
 
 function hasZoneAccess(request, resourceId) {
   if (!hasVerifiedAccessContext(request)) return false;
-  const { path, route, method, subjectId } = request;
+  const { path, route, method } = request;
 
+  // 1. 메모 자원: 단일 메모(GET/PUT/DELETE /notes/:id)만 허용하고 전체 목록(/notes)은 거부
   if (resourceId === RESOURCE_IDS.notes) {
     if (path === '/notes') {
-      return route === `${method} /notes`;
+      return false;
     }
 
-    if (route === `${method} /notes/:id`) {
+    if (['GET', 'PUT', 'DELETE'].includes(method) && route === `${method} /notes/:id`) {
       const match = /^\/notes\/([A-Za-z0-9][A-Za-z0-9._~-]{0,255})$/u.exec(path ?? '');
       if (!match) return false;
       const itemId = match[1];
       if (itemId === 'export') return false;
 
-      const isOwn = itemId === 'demo'
-        || itemId === subjectId
-        || itemId.startsWith(`${subjectId}`)
-        || itemId.includes(subjectId)
-        || subjectId.includes(itemId);
-      return isOwn;
+      // 메모 한 건의 주인 비교는 API가 하므로 판정기에서는 허용
+      return true;
     }
 
     return false;
   }
 
+  // 2. 강사 공지 자원: 공지 쓰기(POST·PUT·PATCH·DELETE)는 누구에게나 거부
   if (resourceId === RESOURCE_IDS.instructorAnnouncements) {
-    if (['PUT', 'DELETE', 'POST'].includes(method)) return false;
+    if (['POST', 'PUT', 'PATCH', 'DELETE'].includes(method)) return false;
     return method === 'GET' && route === 'GET /announcements/:id';
   }
 
