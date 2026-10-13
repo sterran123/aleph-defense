@@ -8,14 +8,16 @@
     "test:package": "node --test test/package-starter.test.mjs",
     "test:stage3": "node --test test/stage3-auth.test.mjs",
     "test:stage8": "node --test test/resource-ids.test.mjs test/stage8-decider.test.mjs test/stage8-api.test.mjs",
-    "test:stage10": "node --test test/stage10-restore.test.mjs",
+    "test:stage10": "node --test test/stage10-restore.test.mjs test/step10-restore.test.mjs",
     "bundle": "node scripts/bundle.mjs",
     "decider:test": "node scripts/decider-test.mjs",
     "detect:test": "node scripts/detect-test.mjs",
     "fixture:7": "node scripts/fixture-7.mjs",
     "xdr:run": "node scripts/xdr-run.mjs",
     "backup": "node scripts/backup.mjs",
-    "restore": "node scripts/restore.mjs"
+    "restore": "node scripts/restore.mjs",
+    "restore:plan": "node scripts/policy-restore.mjs plan",
+    "restore:apply": "node scripts/policy-restore.mjs apply"
   },
   "engines": {
     "node": ">=22"

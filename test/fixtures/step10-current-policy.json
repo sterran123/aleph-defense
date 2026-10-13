@@ -1,0 +1,17 @@
+{
+  "schema": "aleph.test-policy.v1",
+  "services": {
+    "student-notes": {
+      "rules": [
+        { "id": "device_registered", "mode": "optional" },
+        { "id": "resource_zone", "mode": "allow_all" }
+      ]
+    },
+    "unrelated-service": {
+      "rules": [{ "id": "preserve_me", "mode": "deny_unknown" }]
+    }
+  },
+  "auditHistory": [
+    { "eventId": "audit-before-restore", "result": "preserved" }
+  ]
+}

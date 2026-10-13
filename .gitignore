@@ -1,5 +1,7 @@
 artifacts/
-backups/
+backups/*
+!backups/step10/
+!backups/step10/**
 local-vault.json
 bundle-notes.json
 .env

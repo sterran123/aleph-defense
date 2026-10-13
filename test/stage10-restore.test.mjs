@@ -7,8 +7,11 @@ const ownerA = 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa';
 const ownerB = 'bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb';
 const sha256 = value => createHash('sha256').update(value).digest('hex');
 const liveRows = rows => rows.filter(row => row.owner_id !== BACKUP_OWNER_ID);
-const auditRows = rows => rows.filter(row => row.owner_id === BACKUP_OWNER_ID && row.title === '__vault_audit__')
-  .map(row => JSON.parse(row.content));
+const auditActions = async handlers => {
+  const audit = makeResponse();
+  await handlers.audit({ method: 'GET', headers: { authorization: 'Bearer B' } }, audit);
+  return audit.body?.entries?.map(entry => entry.action) ?? [];
+};
 
 function makeResponse() {
   return {
@@ -164,7 +167,8 @@ test('restore fails closed when no private backup exists', async () => {
 
 test('restore refuses a tampered backup copy', async () => {
   const { supabase, rows } = createMemorySupabase();
-  const handlers = createNotesHandlers({ supabase, verifyLogin });
+  const backupMap = new Map();
+  const handlers = createNotesHandlers({ supabase, verifyLogin, backupMap });
   const noteId = randomUUID();
 
   const created = makeResponse();
@@ -172,11 +176,9 @@ test('restore refuses a tampered backup copy', async () => {
     body: { id: noteId, title: 'Safe note', body: 'safe content' } }, created);
   assert.equal(created.statusCode, 201);
 
-  const backupRow = rows.find(row => row.owner_id === BACKUP_OWNER_ID && row.title === '__vault_backup__');
-  assert.ok(backupRow, 'backup row must be persisted');
-  const tampered = JSON.parse(backupRow.content);
-  tampered.content = 'attacker wrote a fake backup';
-  backupRow.content = JSON.stringify(tampered);
+  const record = backupMap.get(noteId);
+  assert.ok(record, 'backup record must be persisted');
+  record.content = 'attacker wrote a fake backup';
 
   const live = rows.find(row => row.id === noteId);
   live.content = 'tampered live note';
@@ -209,7 +211,7 @@ test('restore recreates a deleted note and appends audit entries', async () => {
   assert.equal(restored.body.body, 'will be deleted then restored');
   assert.equal(restored.body.restore.changedFields.includes('missing_note'), true);
 
-  const actions = auditRows(rows).map(entry => entry.action);
+  const actions = await auditActions(handlers);
   assert.ok(actions.includes('note.create'));
   assert.ok(actions.includes('note.delete'));
   assert.ok(actions.includes('note.restore'));

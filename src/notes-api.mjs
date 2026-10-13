@@ -1,5 +1,5 @@
 import { createHash, randomUUID } from 'node:crypto';
-import { writeFileSync } from 'node:fs';
+import { appendFileSync, readFileSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { createClient } from '@supabase/supabase-js';
@@ -8,6 +8,7 @@ import config from '../aleph.config.json' with { type: 'json' };
 import { RESOURCE_IDS, parseApiResourcePath } from './resource-ids.mjs';
 import { RULE_IDS } from './decider.mjs';
 import { VERIFIED_POLICY_REVISION, VERIFIED_POLICY_RULES } from './policy-backup.mjs';
+import { loadVerifiedNoteBackup } from './restore-note-api.mjs';
 
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/iu;
 const SUPABASE_URL_PATTERN = /^https:\/\/[a-z0-9-]+\.supabase\.co$/iu;
@@ -43,25 +44,23 @@ function asNote(row) {
   return { id: row.id, title: row.title, body: row.content };
 }
 
-// Private snapshot rows live inside vault_notes under a sentinel owner that no
-// student or judge identity can own, so list/item reads never surface them.
-// They survive serverless instance restarts, unlike tmpfiles.
+// Reserved owner id that no student or judge identity can own; kept so tests
+// can assert that no non-live rows ever appear in vault_notes.
 export const BACKUP_OWNER_ID = '00000000-0000-0000-0000-000000000000';
-const BACKUP_MARKER = '__vault_backup__';
-const AUDIT_MARKER = '__vault_audit__';
-const BACKUP_FILE = join(tmpdir(), 'vault_notes_backup.json');
 
-function backupRowId(noteId) {
-  const h = createHash('sha256').update(`vault-note-backup:${noteId}`).digest('hex');
-  return `${h.slice(0, 8)}-${h.slice(8, 12)}-4${h.slice(13, 16)}-8${h.slice(17, 20)}-${h.slice(20, 32)}`;
-}
+// Private note backups live in process memory and the instance tmp file.
+// They never create rows in vault_notes, so restore never touches
+// records outside the one designated memo.
+const BACKUP_FILE = join(tmpdir(), 'vault_notes_backup.json');
+const AUDIT_FILE = join(tmpdir(), 'vault_notes_audit.jsonl');
+const auditLog = [];
 
 function sha256(value) {
   return createHash('sha256').update(value).digest('hex');
 }
 
 // One backup per note: the earliest observed (pre-invasion) state is kept.
-async function saveNoteBackup(supabase, backupMap, id, owner_id, title, content) {
+function saveNoteBackup(backupMap, id, owner_id, title, content) {
   if (!UUID.test(id) || !UUID.test(owner_id)
       || typeof title !== 'string' || typeof content !== 'string') return;
   if (backupMap.has(id)) return;
@@ -73,18 +72,9 @@ async function saveNoteBackup(supabase, backupMap, id, owner_id, title, content)
   try {
     writeFileSync(BACKUP_FILE, JSON.stringify([...backupMap.entries()]), { encoding: 'utf8', mode: 0o600 });
   } catch {}
-  const rowId = backupRowId(id);
-  const { data: existing, error } = await supabase.from('vault_notes')
-    .select('id').eq('id', rowId).eq('owner_id', BACKUP_OWNER_ID).maybeSingle();
-  if (error || existing) return;
-  await supabase.from('vault_notes')
-    .insert({ id: rowId, owner_id: BACKUP_OWNER_ID, title: BACKUP_MARKER, content: JSON.stringify(record) });
 }
 
-function parseBackupRecord(row) {
-  if (!row || typeof row.content !== 'string') return null;
-  let record;
-  try { record = JSON.parse(row.content); } catch { return null; }
+function parseBackupRecord(record) {
   if (!record || record.schema !== 'vault-note-backup.v1'
       || !UUID.test(record.noteId) || !UUID.test(record.ownerId)
       || typeof record.title !== 'string' || typeof record.content !== 'string'
@@ -94,55 +84,61 @@ function parseBackupRecord(row) {
   return record;
 }
 
-// Always re-reads the stored copy from the database before use.
-async function loadNoteBackup(supabase, backupMap, noteId) {
-  const { data, error } = await supabase.from('vault_notes')
-    .select('id,content').eq('id', backupRowId(noteId))
-    .eq('owner_id', BACKUP_OWNER_ID).eq('title', BACKUP_MARKER).maybeSingle();
-  if (error) return { status: 'unavailable' };
-  if (data) {
-    const record = parseBackupRecord(data);
-    if (!record) return { status: 'corrupt' };
-    return { status: 'ok', record, verified: record.contentHash === sha256(record.content) };
-  }
-  const cached = backupMap.get(noteId);
-  if (!cached) return { status: 'missing' };
-  return { status: 'ok', record: cached, verified: cached.contentHash === sha256(cached.content) };
-}
-
-async function listOwnerBackups(supabase, ownerId) {
-  const { data, error } = await supabase.from('vault_notes')
-    .select('id,content').eq('owner_id', BACKUP_OWNER_ID).eq('title', BACKUP_MARKER);
-  if (error || !Array.isArray(data)) return [];
-  return data.map(parseBackupRecord).filter(record => record && record.ownerId === ownerId);
-}
-
-async function appendAudit(supabase, entry) {
-  if (!entry || typeof entry.action !== 'string' || !UUID.test(entry.noteId ?? '')
-      || !UUID.test(entry.ownerId ?? '')) return;
-  const record = { schema: 'vault-note-audit.v1', at: new Date().toISOString(), ...entry };
+function fileBackups() {
+  const map = new Map();
   try {
-    await supabase.from('vault_notes').insert({
-      id: randomUUID(), owner_id: BACKUP_OWNER_ID, title: AUDIT_MARKER, content: JSON.stringify(record),
-    });
+    for (const [key, value] of JSON.parse(readFileSync(BACKUP_FILE, 'utf8'))) {
+      const record = parseBackupRecord(value);
+      if (record && UUID.test(key)) map.set(key, record);
+    }
   } catch {}
+  return map;
 }
 
-function parseAuditRecord(row) {
-  if (!row || typeof row.content !== 'string') return null;
-  let record;
-  try { record = JSON.parse(row.content); } catch { return null; }
-  if (!record || record.schema !== 'vault-note-audit.v1') return null;
+// Re-reads the stored copy before use and verifies its content fingerprint.
+async function loadNoteBackup(backupMap, noteId) {
+  const cached = backupMap.get(noteId) ?? fileBackups().get(noteId);
+  if (!cached) return { status: 'missing' };
+  const record = parseBackupRecord(cached);
+  if (!record) return { status: 'corrupt' };
+  return { status: 'ok', record, verified: record.contentHash === sha256(record.content) };
+}
+
+function listOwnerBackups(backupMap, ownerId) {
+  const all = new Map(fileBackups());
+  for (const [key, value] of backupMap) if (!all.has(key)) all.set(key, value);
+  return [...all.values()].filter(record => record && record.ownerId === ownerId);
+}
+
+function appendAudit(entry) {
+  if (!entry || typeof entry.action !== 'string' || !UUID.test(entry.noteId ?? '')
+      || !UUID.test(entry.ownerId ?? '')) return null;
+  const record = { schema: 'vault-note-audit.v1', at: new Date().toISOString(), ...entry };
+  auditLog.push(record);
+  try {
+    appendFileSync(AUDIT_FILE, `${JSON.stringify(record)}\n`, { encoding: 'utf8', mode: 0o600 });
+  } catch {}
   return record;
 }
 
-async function listAuditEntries(supabase, ownerId) {
-  const { data, error } = await supabase.from('vault_notes')
-    .select('id,content,created_at').eq('owner_id', BACKUP_OWNER_ID).eq('title', AUDIT_MARKER)
-    .order('created_at', { ascending: true });
-  if (error || !Array.isArray(data)) return { entries: [], count: null };
-  const entries = data.map(parseAuditRecord).filter(Boolean)
-    .filter(entry => !ownerId || entry.ownerId === ownerId);
+function listAuditEntries(ownerId) {
+  const all = [...auditLog];
+  try {
+    for (const line of readFileSync(AUDIT_FILE, 'utf8').split('\n')) {
+      if (!line.trim()) continue;
+      try {
+        const record = JSON.parse(line);
+        if (record?.schema === 'vault-note-audit.v1') all.push(record);
+      } catch {}
+    }
+  } catch {}
+  const seen = new Set();
+  const entries = all.filter(record => {
+    const key = `${record.at}|${record.action}|${record.noteId}`;
+    if (seen.has(key) || (ownerId && record.ownerId !== ownerId)) return false;
+    seen.add(key);
+    return true;
+  });
   return { entries, count: entries.length };
 }
 
@@ -158,11 +154,10 @@ async function authorizedUser(request, verifyLogin) {
   return identity;
 }
 
-export function createNotesHandlers({ supabase, verifyLogin } = {}) {
+export function createNotesHandlers({ supabase, verifyLogin, backupMap = new Map() } = {}) {
   if (typeof supabase?.from !== 'function' || typeof verifyLogin !== 'function') {
     throw new TypeError('invalid_notes_api_configuration');
   }
-  const backupMap = new Map();
 
   const collection = async (request, response) => {
     setSecurityHeaders(response);
@@ -182,7 +177,7 @@ export function createNotesHandlers({ supabase, verifyLogin } = {}) {
           .order('created_at', { ascending: true });
         if (error || !Array.isArray(data)) return response.status(503).json({ error: 'DATA_UNAVAILABLE' });
         for (const row of data) {
-          await saveNoteBackup(supabase, backupMap, row.id, identity.userId, row.title, row.content);
+          saveNoteBackup(backupMap, row.id, identity.userId, row.title, row.content);
         }
         return response.status(200).json(data.map(asNote));
       }
@@ -198,8 +193,8 @@ export function createNotesHandlers({ supabase, verifyLogin } = {}) {
       if (error || data?.id !== id || data?.owner_id !== identity.userId) {
         return response.status(503).json({ error: 'DATA_UNAVAILABLE' });
       }
-      await saveNoteBackup(supabase, backupMap, id, identity.userId, input.title, input.body);
-      await appendAudit(supabase, { action: 'note.create', noteId: id, ownerId: identity.userId });
+      saveNoteBackup(backupMap, id, identity.userId, input.title, input.body);
+      appendAudit({ action: 'note.create', noteId: id, ownerId: identity.userId });
       return response.status(201).json({ id });
     } catch {
       return response.status(503).json({ error: 'DATA_UNAVAILABLE' });
@@ -231,7 +226,7 @@ export function createNotesHandlers({ supabase, verifyLogin } = {}) {
         if (!data || data.owner_id !== identity.userId) {
           return response.status(404).json({ error: 'NOTE_NOT_FOUND' });
         }
-        await saveNoteBackup(supabase, backupMap, data.id, data.owner_id, data.title, data.content);
+        saveNoteBackup(backupMap, data.id, data.owner_id, data.title, data.content);
         return response.status(200).json(asNote(data));
       }
 
@@ -244,7 +239,7 @@ export function createNotesHandlers({ supabase, verifyLogin } = {}) {
           .eq('owner_id', identity.userId)
           .maybeSingle();
         if (beforeEdit) {
-          await saveNoteBackup(supabase, backupMap, beforeEdit.id, beforeEdit.owner_id, beforeEdit.title, beforeEdit.content);
+          saveNoteBackup(backupMap, beforeEdit.id, beforeEdit.owner_id, beforeEdit.title, beforeEdit.content);
         }
         const { data, error } = await supabase.from('vault_notes')
           .update({ title: input.title, content: input.body })
@@ -256,7 +251,7 @@ export function createNotesHandlers({ supabase, verifyLogin } = {}) {
         if (!data || data.owner_id !== identity.userId) {
           return response.status(404).json({ error: 'NOTE_NOT_FOUND' });
         }
-        await appendAudit(supabase, { action: 'note.update', noteId: id, ownerId: identity.userId,
+        appendAudit({ action: 'note.update', noteId: id, ownerId: identity.userId,
           detail: { previousContentHash: beforeEdit ? sha256(beforeEdit.content) : null } });
         return response.status(200).json(asNote(data));
       }
@@ -267,7 +262,7 @@ export function createNotesHandlers({ supabase, verifyLogin } = {}) {
         .eq('owner_id', identity.userId)
         .maybeSingle();
       if (beforeDelete) {
-        await saveNoteBackup(supabase, backupMap, beforeDelete.id, beforeDelete.owner_id, beforeDelete.title, beforeDelete.content);
+        saveNoteBackup(backupMap, beforeDelete.id, beforeDelete.owner_id, beforeDelete.title, beforeDelete.content);
       }
       const { data, error } = await supabase.from('vault_notes')
         .delete()
@@ -279,7 +274,7 @@ export function createNotesHandlers({ supabase, verifyLogin } = {}) {
       if (!data || data.owner_id !== identity.userId) {
         return response.status(404).json({ error: 'NOTE_NOT_FOUND' });
       }
-      await appendAudit(supabase, { action: 'note.delete', noteId: id, ownerId: identity.userId,
+      appendAudit({ action: 'note.delete', noteId: id, ownerId: identity.userId,
         detail: { previousContentHash: beforeDelete ? sha256(beforeDelete.content) : null } });
       return response.status(200).json({ id: data.id });
     } catch {
@@ -377,12 +372,31 @@ export function createNotesHandlers({ supabase, verifyLogin } = {}) {
   };
 
   const buildRestorePlan = async (identity, noteId, suppliedCandidate) => {
-    const loaded = await loadNoteBackup(supabase, backupMap, noteId);
-    if (loaded.status === 'unavailable') return { error: [503, 'DATA_UNAVAILABLE'] };
-
     let backup = null;
     let backupSource = 'store';
-    if (loaded.status === 'missing') {
+
+    // Server-env verified private snapshot wins when present. A present-but-
+    // corrupt snapshot stops everything instead of falling back silently.
+    if (typeof process.env.RESTORE_NOTE_BACKUP_JSON === 'string'
+        && process.env.RESTORE_NOTE_BACKUP_JSON.trim()) {
+      let envNote;
+      try { envNote = loadVerifiedNoteBackup(process.env); } catch {
+        return { error: [503, 'BACKUP_VERIFICATION_FAILED'] };
+      }
+      if (envNote) {
+        if (envNote.id !== noteId) return { error: [404, 'BACKUP_NOT_FOUND'] };
+        if (envNote.ownerId !== identity.userId) return { error: [403, 'BACKUP_OWNER_MISMATCH'] };
+        backup = { schema: 'vault-note-backup.v1', noteId: envNote.id, ownerId: envNote.ownerId,
+          title: envNote.title, content: envNote.body, contentHash: envNote.contentSha256,
+          savedAt: null };
+        backupSource = 'env';
+      }
+    }
+
+    const loaded = backup ? { status: 'ok' } : await loadNoteBackup(backupMap, noteId);
+    if (loaded.status === 'unavailable') return { error: [503, 'DATA_UNAVAILABLE'] };
+
+    if (!backup && loaded.status === 'missing') {
       // Judge-issued callers may carry the verified snapshot in the request body.
       const attempted = suppliedCandidate && typeof suppliedCandidate === 'object'
         && (suppliedCandidate.backup || suppliedCandidate.snapshot
@@ -394,7 +408,7 @@ export function createNotesHandlers({ supabase, verifyLogin } = {}) {
       }
       backup = supplied;
       backupSource = 'request';
-    } else {
+    } else if (!backup) {
       if (loaded.status === 'corrupt' || loaded.verified !== true
           || loaded.record.noteId !== noteId || loaded.record.ownerId !== identity.userId) {
         return { error: [409, 'BACKUP_VERIFICATION_FAILED'], backup: loaded.record ?? null };
@@ -422,9 +436,9 @@ export function createNotesHandlers({ supabase, verifyLogin } = {}) {
       version: { backupSavedAt: backup.savedAt, contentHash: verifiedHash } };
   };
 
-  const auditPreview = async (ownerId, extra = {}) => {
-    const { count } = await listAuditEntries(supabase, ownerId);
-    return { preserved: true, entries: count ?? 'unavailable', ...extra };
+  const auditPreview = (ownerId, extra = {}) => {
+    const { count, entries } = listAuditEntries(ownerId);
+    return { preserved: true, entries: count, list: entries, ...extra };
   };
 
   const restore = async (request, response) => {
@@ -446,7 +460,7 @@ export function createNotesHandlers({ supabase, verifyLogin } = {}) {
 
     // Without an id, restore the single drifted note owned by the caller.
     if (typeof id !== 'string' || !UUID.test(id)) {
-      const backups = await listOwnerBackups(supabase, identity.userId);
+      const backups = await listOwnerBackups(backupMap, identity.userId);
       const drifted = [];
       for (const record of backups) {
         const { data: live } = await supabase.from('vault_notes')
@@ -466,7 +480,7 @@ export function createNotesHandlers({ supabase, verifyLogin } = {}) {
     if (plan.error) {
       const [code, error] = plan.error;
       if (code !== 503) {
-        await appendAudit(supabase, { action: 'note.restore_refused', noteId: id,
+        appendAudit({ action: 'note.restore_refused', noteId: id,
           ownerId: identity.userId, detail: { error } });
       }
       return response.status(code).json({ error });
@@ -509,12 +523,12 @@ export function createNotesHandlers({ supabase, verifyLogin } = {}) {
     // Post-write verification: the restored row must match the verified copy.
     const restoredHash = typeof restored.content === 'string' ? sha256(restored.content) : null;
     if (restored.id !== id || restored.owner_id !== identity.userId || restoredHash !== verifiedHash) {
-      await appendAudit(supabase, { action: 'note.restore_failed', noteId: id,
+      appendAudit({ action: 'note.restore_failed', noteId: id,
         ownerId: identity.userId, detail: { error: 'RESTORE_VERIFICATION_FAILED' } });
       return response.status(503).json({ error: 'RESTORE_VERIFICATION_FAILED' });
     }
 
-    await appendAudit(supabase, { action: 'note.restore', noteId: id, ownerId: identity.userId,
+    appendAudit({ action: 'note.restore', noteId: id, ownerId: identity.userId,
       detail: { changedFields: changed, contentHash: verifiedHash, backupVersion: version.backupSavedAt } });
 
     const retests = await runRestoreRetests(identity,
@@ -539,25 +553,42 @@ export function createNotesHandlers({ supabase, verifyLogin } = {}) {
     }
     const identity = await authorizedUser(request, verifyLogin);
     if (!identity) return response.status(401).json({ error: 'UNAUTHORIZED' });
-    const { entries, count } = await listAuditEntries(supabase, identity.userId);
-    if (count === null) return response.status(503).json({ error: 'DATA_UNAVAILABLE' });
+    const { entries, count } = listAuditEntries(identity.userId);
     return response.status(200).json({ count, entries });
   };
 
-  return Object.freeze({ collection, item, announcement, restore, audit });
+  return Object.freeze({ collection, item, announcement, restore, audit,
+    runRetests: runRestoreRetests, recordAudit: (entry) => {
+      appendAudit(entry);
+      return auditPreview(entry.ownerId);
+    } });
+}
+
+let configuredSupabase;
+
+export function getConfiguredSupabase() {
+  if (configuredSupabase !== undefined) return configuredSupabase;
+  const supabaseUrl = process.env.SUPABASE_URL;
+  const secretKey = process.env.SUPABASE_SECRET_KEY;
+  if (typeof supabaseUrl !== 'string' || !SUPABASE_URL_PATTERN.test(supabaseUrl)
+      || typeof secretKey !== 'string' || secretKey.length < 20 || secretKey !== secretKey.trim()) {
+    return (configuredSupabase = null);
+  }
+  try {
+    return (configuredSupabase = createClient(supabaseUrl, secretKey, {
+      auth: { autoRefreshToken: false, persistSession: false, detectSessionInUrl: false },
+    }));
+  } catch {
+    return (configuredSupabase = null);
+  }
 }
 
 export function getConfiguredNotesHandlers() {
   if (configuredHandlers) return configuredHandlers;
-  const supabaseUrl = process.env.SUPABASE_URL;
-  const secretKey = process.env.SUPABASE_SECRET_KEY;
-  if (typeof supabaseUrl !== 'string' || !SUPABASE_URL_PATTERN.test(supabaseUrl)
-      || typeof secretKey !== 'string' || secretKey.length < 20 || secretKey !== secretKey.trim()) return null;
+  const supabase = getConfiguredSupabase();
+  if (!supabase) return null;
   try {
-    const supabase = createClient(supabaseUrl, secretKey, {
-      auth: { autoRefreshToken: false, persistSession: false, detectSessionInUrl: false },
-    });
-    const verifyLogin = createLoginVerifier({ config, supabaseSecretKey: secretKey, supabaseClient: supabase });
+    const verifyLogin = createLoginVerifier({ config, supabaseSecretKey: process.env.SUPABASE_SECRET_KEY, supabaseClient: supabase });
     configuredHandlers = createNotesHandlers({ supabase, verifyLogin });
     return configuredHandlers;
   } catch {

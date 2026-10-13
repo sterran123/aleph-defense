@@ -75,12 +75,15 @@ export async function runAttackChecks(config) {
       ? config.restoreRoute : '/api/notes/restore';
     const auditRoute = typeof config.auditRoute === 'string' && config.auditRoute.startsWith('/')
       ? config.auditRoute : '/api/notes/audit';
-    const [anonymousRestore, invalidTokenRestore, anonymousAudit] = await Promise.all([
+    const strictRoute = '/api/restore/notes/00000000-0000-4000-8000-000000000001';
+    const [anonymousRestore, invalidTokenRestore, anonymousAudit, anonymousStrict, anonymousOps] = await Promise.all([
       request(restoreRoute, null, 'POST'), request(restoreRoute, 'Bearer invalid.invalid.invalid', 'POST'),
-      request(auditRoute),
+      request(auditRoute), request(strictRoute, null, 'POST'), request('/api/operations'),
     ]);
-    const [anonymousRestoreJsonError, invalidRestoreJsonError, anonymousAuditJsonError] = await Promise.all([
+    const [anonymousRestoreJsonError, invalidRestoreJsonError, anonymousAuditJsonError,
+      anonymousStrictJsonError, anonymousOpsJsonError] = await Promise.all([
       hasJsonError(anonymousRestore), hasJsonError(invalidTokenRestore), hasJsonError(anonymousAudit),
+      hasJsonError(anonymousStrict), hasJsonError(anonymousOps),
     ]);
     results.push(
       { attackId: 'restore_anonymous', expected: 'No-token restore requests return JSON 401 or 403',
@@ -89,6 +92,10 @@ export async function runAttackChecks(config) {
         observed: `HTTP ${invalidTokenRestore?.status ?? 0}; JSON error ${invalidRestoreJsonError}` },
       { attackId: 'audit_anonymous', expected: 'No-token audit log reads return JSON 401 or 403',
         observed: `HTTP ${anonymousAudit?.status ?? 0}; JSON error ${anonymousAuditJsonError}` },
+      { attackId: 'restore_strict_anonymous', expected: 'POST /api/restore/notes/:id without a token returns JSON 401 or 403',
+        observed: `HTTP ${anonymousStrict?.status ?? 0}; JSON error ${anonymousStrictJsonError}` },
+      { attackId: 'operations_anonymous', expected: 'GET /api/operations without a token returns JSON 401 or 403',
+        observed: `HTTP ${anonymousOps?.status ?? 0}; JSON error ${anonymousOpsJsonError}` },
     );
   }
   return results;

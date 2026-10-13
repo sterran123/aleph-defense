@@ -2,22 +2,22 @@
 
 ## 10단계 저장점 · 백업에서 자료실을 되살립니다
 
-- `aleph.config.json`은 `step: 10`, `restoreRoute: "/api/notes/restore"`, `auditRoute: "/api/notes/audit"`를 기록합니다. `allowedRoutes`에 `POST /api/notes/restore`와 `GET /api/notes/audit`를 등록합니다.
-- 메모를 읽거나 고칠 때마다 `src/notes-api.mjs`가 침해 전 최초 상태를 비공개 사본으로 보존합니다. 사본은 데이터 저장소 안의 서비스 전용 행에만 기록되어 서버리스 인스턴스가 바뀌어도 살아 있으며, 어떤 사용자 경로로도 목록에 나타나지 않습니다.
-- 복원할 때마다 `POST /api/notes/restore`(본문 `{"id"}` 또는 경로 `/api/notes/restore/<id>`)가 사본을 **다시 읽어** ID·소유자·SHA-256 지문을 대조합니다. 사본이 없거나(404 `BACKUP_NOT_FOUND`) 지문이 틀리면(409 `BACKUP_VERIFICATION_FAILED`) 아무것도 쓰지 않고 멈춥니다. `GET` 또는 `{"dryRun":true}` 호출은 사본 버전과 바뀔 항목만 미리 보여 주고 쓰지 않습니다.
-- 복원은 지정한 한 건만 되돌립니다. 다른 메모·정책은 건드리지 않고, 생성·수정·삭제·복원·검증 거부는 감사 기록 행에 덧붙입니다. 복원 작업 자체도 `note.restore` 한 줄로 남습니다. `GET /api/notes/audit`는 호출자 본인의 감사 이력만 반환합니다.
-- 복원 응답의 `restore.retests`에는 복구 직후 실제로 다시 실행한 시험이 들어갑니다: 정상 요청(본인 메모 다시 읽기), 금지 요청(로그인 없는 목록, 위조 토큰, 검증 없는 공지 쓰기, 미등록 기기 판정). 실행하지 않은 시험은 결과를 채우지 않습니다.
-- `src/policy-backup.mjs`는 침해 전 검증된 안전 정책(버전 1, 규칙 `device_registered`, `step_up_required`, `resource_zone`)과 현재 시험 정책의 차이를 검사하고 안전 버전으로 복원합니다.
-- 로컬 연습 도구: `npm run backup`은 `local-vault.json`의 사본을 `backups/`에 지문 파일과 함께 저장하고, `npm run restore`는 사본 지문을 다시 읽어 검증한 뒤 바뀔 항목을 먼저 보여 주고 `--yes`로만 실제로 되돌립니다. 손댄 사본은 거부됩니다.
+- `aleph.config.json`은 `step: 10`, `restoreRoute: "POST /api/restore/notes/:id"`, `auditRoute: "/api/notes/audit"`를 기록합니다. `allowedRoutes`에 `POST /api/restore/notes/:id`, `GET /api/notes/restore`, `GET /api/notes/audit`, `GET /api/operations`를 등록합니다.
+- **검증된 안전 정책 사본**: `backups/step10/safe-policy.json`과 그 SHA-256을 `backups/step10/safe-policy.sha256`에 커밋해 둡니다. `src/policy-restore.mjs`의 `verifyPolicySnapshot`이 사본 본문 해시를 먼저 대조하고, `diffTestPolicy`가 사본과 현재 시험 정책(`test/fixtures/step10-current-policy.json`)의 차이만 실행 전에 보여 줍니다. 사본이 없거나 검증에 실패하면 아무것도 쓰지 않고 중단합니다.
+- **시험 정책 되돌리기**: `npm run restore:plan`은 바뀔 규칙 목록만 출력하고, `npm run restore:apply -- --confirm=<사본 버전>`은 버전 문자열 확인 후 `artifacts/step10-restored-policy.json`에만 씁니다. `restoreTestPolicy`는 `student-notes`의 규칙만 교체하고 다른 서비스 규칙과 `auditHistory`는 그대로 보존하며 운영 정책은 건드리지 않습니다.
+- **비공개 가상 메모 복원**: `POST /api/restore/notes/:id`는 비공개 사본을 서버 환경 변수(`RESTORE_NOTE_BACKUP_JSON`, `RESTORE_NOTE_BACKUP_SHA256`)에서만 읽습니다. 요청 본문으로 소유자·역할·내용을 받지 않고, 사본 전체 해시·메모 ID·소유자 UUID·본문 해시를 모두 대조한 뒤 지정된 한 건만 `vault_notes`에서 되돌립니다. 사본 없음·검증 실패는 `503`, 사본에 없는 대상은 `404`, 사본 소유자가 아닌 호출자는 `403`, 본문이 이미 같으면 쓰지 않고 `restored:false`를 돌려줍니다. 응답에는 메모 본문 대신 `id`·`ownerVerified`·`contentSha256`·`restored`만 남깁니다.
+- **감사·재시험 표면**: `GET /api/operations`는 검증된 호출자에게 단계별 점검 표를 돌려주며 실제로 보낸 요청만 `measured`로, 나머지는 `not_run`으로 남겨 결과를 꾸미지 않습니다. `recovery` 요약은 사본 해시를 그때 다시 검증한 결과만 보고합니다. `GET /api/notes/audit`는 호출자 본인의 감사 이력(생성·수정·삭제·복원·검증 거부 포함)을 반환하고, `POST /api/notes/restore`는 저장된 사본을 다시 읽어 복원한 뒤 `restore.retests`에 복구 직후 실제로 재실행한 정상·금지 요청 결과를 담습니다.
 - 복구 뒤 재실행 순서:
-  1. `npm run test:r5` (배포 메타데이터 및 인증 검사)
-  2. `npm run test:stage3` (소유자 격리 및 타인 접근 404 확인)
-  3. `npm run test:stage8` (구역 분리 및 공지 쓰기 차단 확인)
-  4. `npm run detect:test` (다량 조회 탐지 및 회수 제안 확인)
-  5. `npm run decider:test` (등록 기기 허용 및 미등록 거부 확인)
-  6. `npm run test:stage10` (사본 재읽기·해시 일치·감사 기록·대상 외 메모 보존 확인)
-  7. `npm run bundle` (배포 대상 공격 점검: 로그인 없는 목록·복원·감사 요청 거부 포함)
-- 로컬 확인: `npm run detect:test` 6개, `npm run test:stage8` 10개, `npm run test:r5` 2개, `npm run test:stage3` 6개, `npm run test:stage10` 9개 통과. 모두 가상·단위 시험이며 실제 엔진 연동, Production 배포 또는 심판 판정의 증거는 아닙니다.
+  1. `npm run restore:plan` (검증된 사본과 현재 시험 정책 차이 확인)
+  2. `npm run test:r5` (배포 메타데이터 및 인증 검사)
+  3. `npm run test:stage3` (소유자 격리 및 타인 접근 404 확인)
+  4. `npm run test:stage8` (구역 분리 및 공지 쓰기 차단 확인)
+  5. `npm run detect:test` (다량 조회 탐지 및 회수 제안 확인)
+  6. `npm run decider:test` (등록 기기 허용 및 미등록 거부 확인)
+  7. `npm run test:stage10` (사본 재읽기·해시 일치·감사 기록·대상 외 메모 보존·엄격 복원 경로 확인)
+  8. `npm run bundle` (배포 대상 공격 점검: 로그인 없는 목록·복원·감사·작전 요청 거부 포함)
+- 로컬 연습 도구: `npm run backup`은 `local-vault.json`의 사본을 `backups/`에 지문 파일과 함께 저장하고, `npm run restore`는 사본 지문을 다시 읽어 검증한 뒤 바뀔 항목을 먼저 보여 주고 `--yes`로만 실제로 되돌립니다. 손댄 사본은 거부됩니다. `backups/` 아래 `step10/`의 검증 사본만 Git에 커밋하고 연습 산출물은 무시합니다.
+- 로컬 확인: `npm run detect:test` 6개, `npm run test:stage8` 10개, `npm run test:r5` 2개, `npm run test:stage3` 6개, `npm run test:package` 4개, `npm run test:stage10` 15개 통과. 모두 가상·단위 시험이며 실제 엔진 연동, Production 배포 또는 심판 판정의 증거는 아닙니다.
 
 ## 9단계 저장점 · 도플갱어를 찾고 권한을 거둡니다
 

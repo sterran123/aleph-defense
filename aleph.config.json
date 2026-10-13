@@ -17,10 +17,12 @@
     "GET /api/announcements/:id",
     "POST /api/notes/restore",
     "POST /api/notes/restore/:id",
-    "GET /api/notes/audit"
+    "POST /api/restore/notes/:id",
+    "GET /api/notes/audit",
+    "GET /api/operations"
   ],
   "originalApiUrl": "https://ufsdwlcxqwasyuhneynz.supabase.co/rest/v1/vault_notes",
-  "restoreRoute": "/api/notes/restore",
+  "restoreRoute": "POST /api/restore/notes/:id",
   "auditRoute": "/api/notes/audit",
   "serviceId": "notes",
   "resourceIds": {
