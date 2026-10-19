@@ -38,8 +38,17 @@ const COLL = {
   audit: 'audit',            // 어떤 경우에도 지우지 않음
 };
 
-const BURST_WINDOW_MS = 600_000;
-const BURST_THRESHOLD = 121;
+// 5차 변경 요구(탐지 창·건수 조정, 승인 유효기간)에 대비해 바뀔 수 있는 값은 한 곳에서 읽습니다.
+// 기본값은 공개 계약과 같고, 서버 환경변수로만 바꿉니다.
+const intEnv = (name, fallback) => {
+  const raw = process.env[name];
+  if (raw === undefined || raw === '') return fallback;
+  const n = Number(raw);
+  return Number.isSafeInteger(n) && n >= 0 ? n : fallback;
+};
+const BURST_WINDOW_MS = intEnv('PRODUCT_BURST_WINDOW_MS', 600_000);
+const BURST_THRESHOLD = intEnv('PRODUCT_BURST_THRESHOLD', 121);
+const APPROVAL_TTL_MS = intEnv('PRODUCT_APPROVAL_TTL_MS', 0); // 0 = 만료 없음(현재 계약)
 const EXECUTE_CLAIM_STALE_MS = 60_000;
 const WAIT_SLICES = 400; // 동시 승인 대기 상한(25ms × 400)
 
@@ -410,6 +419,7 @@ export async function createResponse(ctx, body) {
     const rec = {
       operationKey, fingerprint, incidentId, target, action, payload,
       state: 'pending', approval: 'waiting', executing: false, executingSince: null,
+      createdAtMs: ctx.clock(),
       attempts: 0, executedAt: null, releasedAt: null,
       createdBy: ctx.actor.userId, createdAt: isoNow(ctx), runId: ctx.runId ?? null,
     };
@@ -472,6 +482,20 @@ async function waitForSettlement(ctx, key) {
 export async function approveResponse(ctx, key) {
   requireOperator(ctx);
   if (!isOperationKey(key)) throw notFound('response_not_found');
+  // 승인 유효기간이 설정된 경우(APPROVAL_TTL_MS > 0) 기한이 지난 제안은 만료로 기록하고 승인할 수 없습니다.
+  if (APPROVAL_TTL_MS > 0) {
+    const expired = await ctx.store.transaction(async tx => {
+      const rec = await tx.get(COLL.responses, key);
+      if (!rec) throw notFound('response_not_found');
+      if (rec.approval !== 'waiting') return false;
+      const createdMs = rec.createdAtMs ?? Date.parse(rec.createdAt ?? '') ?? ctx.clock();
+      if (ctx.clock() - createdMs <= APPROVAL_TTL_MS) return false;
+      await tx.put(COLL.responses, key, { ...rec, approval: 'expired' });
+      await auditTx(tx, ctx, 'response_expire', { operationKey: key });
+      return true;
+    });
+    if (expired) throw conflict('approval_expired', '승인 기한이 지났습니다');
+  }
   const claim = await ctx.store.transaction(async tx => {
     const rec = await tx.get(COLL.responses, key);
     if (!rec) throw notFound('response_not_found');
@@ -481,6 +505,7 @@ export async function approveResponse(ctx, key) {
       if (running) return 'wait';
       if (rec.state !== 'pending') return 'settled'; // 이미 끝난 작업은 그대로 돌려줍니다
     }
+    if (rec.approval === 'expired') throw conflict('operation_state', 'expired');
     await tx.put(COLL.responses, key, {
       ...rec, approval: 'approved', approvedBy: ctx.actor.userId, approvedAt: rec.approvedAt ?? isoNow(ctx),
       executing: true, executingSince: ctx.clock(),

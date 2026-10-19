@@ -1,0 +1,123 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="980" height="560" viewBox="0 0 980 560" font-family="Malgun Gothic, Segoe UI, sans-serif">
+  <defs>
+    <marker id="arrow" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+      <path d="M0,0 L10,5 L0,10 z" fill="#444"/>
+    </marker>
+    <style>
+      .box { fill: #f5f7fb; stroke: #3b4a63; stroke-width: 1.5; rx: 8; }
+      .ext { fill: #fdf3e7; stroke: #9a6a2f; stroke-width: 1.5; rx: 8; }
+      .title { font-size: 15px; font-weight: 700; fill: #1d2b45; }
+      .sub { font-size: 11px; fill: #44506a; }
+      .lbl { font-size: 11px; fill: #333; }
+      .flow { stroke: #444; stroke-width: 1.4; fill: none; marker-end: url(#arrow); }
+      .deny { stroke: #b3261e; stroke-width: 1.4; fill: none; marker-end: url(#arrow); stroke-dasharray: 5 3; }
+    </style>
+  </defs>
+
+  <text x="20" y="30" class="title" font-size="18">내 ZTNA 구성도 (실제 코드 기준)</text>
+
+  <!-- 브라우저 -->
+  <rect x="30" y="70" width="160" height="70" class="box" rx="8"/>
+  <text x="110" y="98" class="title" text-anchor="middle">브라우저</text>
+  <text x="110" y="118" class="sub" text-anchor="middle">public/ 정적 앱</text>
+  <text x="110" y="133" class="sub" text-anchor="middle">__Host- 쿠키 세션</text>
+
+  <!-- 접속 프로그램 -->
+  <rect x="260" y="70" width="170" height="70" class="box" rx="8"/>
+  <text x="345" y="95" class="title" text-anchor="middle">접속 프로그램</text>
+  <text x="345" y="113" class="sub" text-anchor="middle">api/auth.js 로그인</text>
+  <text x="345" y="127" class="sub" text-anchor="middle">api/device-approval.js</text>
+  <text x="345" y="141" class="sub" text-anchor="middle">기기 등록·승인</text>
+
+  <!-- 검문소 -->
+  <rect x="500" y="70" width="200" height="90" class="box" rx="8"/>
+  <text x="600" y="95" class="title" text-anchor="middle">검문소</text>
+  <text x="600" y="113" class="sub" text-anchor="middle">server-session.mjs (쿠키→Bearer)</text>
+  <text x="600" y="127" class="sub" text-anchor="middle">verify-login.mjs (JWT·Supabase 검증)</text>
+  <text x="600" y="141" class="sub" text-anchor="middle">device-approval.guard</text>
+  <text x="600" y="155" class="sub" text-anchor="middle">api/notes.js·restore·operations</text>
+
+  <!-- 판정기 -->
+  <rect x="770" y="70" width="180" height="90" class="box" rx="8"/>
+  <text x="860" y="95" class="title" text-anchor="middle">판정기</text>
+  <text x="860" y="113" class="sub" text-anchor="middle">src/decider.mjs</text>
+  <text x="860" y="127" class="sub" text-anchor="middle">device_registered·step_up_required</text>
+  <text x="860" y="141" class="sub" text-anchor="middle">resource_zone</text>
+  <text x="860" y="155" class="sub" text-anchor="middle">src/detect.mjs burst 탐지</text>
+
+  <!-- 자료실 -->
+  <rect x="500" y="240" width="200" height="80" class="box" rx="8"/>
+  <text x="600" y="265" class="title" text-anchor="middle">자료실</text>
+  <text x="600" y="283" class="sub" text-anchor="middle">Supabase Postgres</text>
+  <text x="600" y="297" class="sub" text-anchor="middle">vault_notes·ai_usage·product_kv</text>
+  <text x="600" y="311" class="sub" text-anchor="middle">RLS·service_role만 쓰기</text>
+
+  <!-- 로그인 발급자 -->
+  <rect x="770" y="240" width="180" height="80" class="box" rx="8"/>
+  <text x="860" y="265" class="title" text-anchor="middle">로그인 발급자</text>
+  <text x="860" y="283" class="sub" text-anchor="middle">Supabase Auth (학생)</text>
+  <text x="860" y="297" class="sub" text-anchor="middle">심판 JWKS (judge 토큰)</text>
+  <text x="860" y="311" class="sub" text-anchor="middle">verify-login.mjs가 검증</text>
+
+  <!-- AI 중계 -->
+  <rect x="60" y="240" width="160" height="70" class="box" rx="8"/>
+  <text x="140" y="263" class="title" text-anchor="middle">/api/ai</text>
+  <text x="140" y="281" class="sub" text-anchor="middle">로그인 + 하루 상한</text>
+  <text x="140" y="295" class="sub" text-anchor="middle">ai_usage 표로 집계</text>
+
+  <!-- 외부 AI -->
+  <rect x="60" y="360" width="160" height="60" class="ext" rx="8"/>
+  <text x="140" y="385" class="title" text-anchor="middle">외부 AI API</text>
+  <text x="140" y="403" class="sub" text-anchor="middle">AI_PROXY_URL + 서버 키</text>
+
+  <!-- 침해 정보 -->
+  <rect x="260" y="240" width="170" height="70" class="box" rx="8"/>
+  <text x="345" y="263" class="title" text-anchor="middle">/api/threat-intel</text>
+  <text x="345" y="281" class="sub" text-anchor="middle">로그인 + 6시간 캐시</text>
+  <text x="345" y="295" class="sub" text-anchor="middle">fetchedAt 응답</text>
+
+  <!-- NVD/KEV -->
+  <rect x="260" y="360" width="170" height="60" class="ext" rx="8"/>
+  <text x="345" y="385" class="title" text-anchor="middle">NVD CVE · CISA KEV</text>
+  <text x="345" y="403" class="sub" text-anchor="middle">공식 침해 정보 원천</text>
+
+  <!-- 화살표 -->
+  <path class="flow" d="M190,105 L258,105"/>
+  <text x="224" y="98" class="lbl" text-anchor="middle">로그인</text>
+
+  <path class="flow" d="M430,105 L498,105"/>
+  <text x="464" y="98" class="lbl" text-anchor="middle">요청+토큰</text>
+
+  <path class="flow" d="M700,105 L768,105"/>
+  <text x="734" y="98" class="lbl" text-anchor="middle">판정 요청</text>
+
+  <path class="deny" d="M860,160 L860,200 L600,200 L600,238"/>
+  <text x="730" y="193" class="lbl" text-anchor="middle" fill="#b3261e">deny·step_up 시 차단</text>
+
+  <path class="flow" d="M600,160 L600,238"/>
+  <text x="660" y="205" class="lbl" text-anchor="middle">읽기·쓰기(SQL)</text>
+
+  <path class="flow" d="M700,115 L768,250"/>
+  <text x="752" y="180" class="lbl" text-anchor="middle">토큰 검증</text>
+
+  <path class="flow" d="M140,140 L140,238"/>
+  <text x="120" y="195" class="lbl" text-anchor="middle">프롬프트</text>
+
+  <path class="flow" d="M140,310 L140,358"/>
+  <text x="110" y="338" class="lbl" text-anchor="middle">서버키로만 호출</text>
+
+  <path class="flow" d="M220,275 L500,280"/>
+  <text x="330" y="270" class="lbl" text-anchor="middle">사용량 기록</text>
+
+  <path class="flow" d="M345,140 L345,238"/>
+  <text x="330" y="195" class="lbl" text-anchor="middle">조회</text>
+
+  <path class="flow" d="M345,310 L345,358"/>
+  <text x="410" y="338" class="lbl" text-anchor="middle">6시간 캐시</text>
+
+  <!-- 경계선 -->
+  <rect x="15" y="55" width="950" height="170" fill="none" stroke="#3b4a63" stroke-dasharray="6 4" rx="10"/>
+  <text x="25" y="220" class="sub">신뢰 경계 안(내 Vercel 앱 + 내 Supabase)</text>
+  <rect x="15" y="340" width="450" height="95" fill="none" stroke="#9a6a2f" stroke-dasharray="6 4" rx="10"/>
+  <text x="25" y="430" class="sub">외부 서비스(내가 통제하지 않음 — 조회만)</text>
+</svg>

@@ -24,7 +24,15 @@
     "POST /api/notes/restore/:id",
     "POST /api/restore/notes/:id",
     "GET /api/notes/audit",
-    "GET /api/operations"
+    "GET /api/operations",
+    "GET /api/ai",
+    "POST /api/ai",
+    "GET /api/threat-intel",
+    "GET /api/product/v1/*",
+    "POST /api/product/v1/*",
+    "PUT /api/product/v1/*",
+    "PATCH /api/product/v1/*",
+    "DELETE /api/product/v1/*"
   ],
   "originalApiUrl": "https://ufsdwlcxqwasyuhneynz.supabase.co/rest/v1/vault_notes",
   "restoreRoute": "POST /api/restore/notes/:id",

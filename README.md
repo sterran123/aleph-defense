@@ -268,31 +268,13 @@ node xdr/web-injection/respond.mjs
 
 시험 경보에서는 `block=8`, `alert=9`, `record=9`이며 정상 이벤트 차단은 없습니다. 첫 명령은 `xdr/web-injection/result.json`을 만들고, 두 번째 명령은 `xdr/deny-rules.json`의 기존 규칙을 보존하면서 추가 규칙을 병합합니다. 입력은 합성 경보뿐입니다.
 
+## 13단계 저장점 (배포 묶음 + 미구현 API 실구현)
 
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
+- `npm run package` — `package/`의 배포 묶음을 검증(설치 안내·구성도·규칙 목록·캡처 목록·비밀값 검사)하고 `artifacts/ztna-package/`로 조립합니다.
+- `api/ai.js` — 로그인 필수 + 사용자별 하루 상한(Supabase `ai_usage` 표, `AI_DAILY_LIMIT` 기본 20) + 서버 환경변수 키로만 외부 AI 중계(없으면 503 `AI_NOT_CONFIGURED`). `supabase/migrations/20261019_stage13_ai_usage.sql` 실행 필요.
+- `api/threat-intel.js` — 로그인 필수 + CISA KEV·NVD 실조회 + 6시간 캐시 + `fetchedAt` 응답.
+- `api/product/[...path].mjs` — 4차 제품 API(D1~D4)를 `/api/product/v1/*`로 서빙. 제품 탐지·승인 파라미터는 `PRODUCT_BURST_WINDOW_MS`·`PRODUCT_BURST_THRESHOLD`·`PRODUCT_APPROVAL_TTL_MS`로 조정(기본값=계약 동일).
+- `aleph.config.json`: step 12 유지(묶음 도구 상한). `allowedRoutes`에 `/api/ai`·`/api/threat-intel`·`/api/product/v1/*` 등록.
+- 확인한 시험: `npm run test:package` 4/4, `test:stage10` 15/15, `cd product && npm test` 22/22 통과.
+- 남은 수동 작업: Supabase SQL(ai_usage·product_kv·product_operator), Vercel 환경변수, 배포 확인 후 방어전 페이지 제출.
 

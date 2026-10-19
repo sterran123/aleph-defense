@@ -19,19 +19,19 @@ test('패키징 함수 기준표는 시작 틀의 실제 API와 일치한다', a
   assert.deepEqual(actual, [...baseline.functions, ...baseline.allowedNew].sort());
 });
 
-test('미구현 서버 뼈대는 성공이나 로그인 통과로 가장하지 않는다', async () => {
+test('AI·침해 정보 서버는 로그인 없는 요청을 거부한다', async () => {
   for (const name of ['ai', 'threat-intel']) {
     const { default: handler } = await import(`../api/${name}.js`);
     const headers = new Map();
     let status;
     let body;
-    handler({}, {
+    await handler({ method: 'GET', headers: {} }, {
       setHeader: (key, value) => headers.set(key.toLowerCase(), value),
       status: value => { status = value; return { json: value => { body = value; } }; },
     });
-    assert.equal(status, 501);
+    assert.equal(status, 401);
     assert.equal(headers.get('cache-control'), 'no-store');
-    assert.match(body.error, /NOT_IMPLEMENTED$/u);
+    assert.equal(body.error, 'UNAUTHORIZED');
   }
 });
 
