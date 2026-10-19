@@ -246,10 +246,13 @@ const renderEvents = (input, ui, onChange) => {
   if (notice) root.append(notice);
 
   if (status === 'loading') {
+    // 자료 갱신 경계: 이전 상세 선택을 지웁니다.
+    ui.openDetail = null;
     root.append(el('p', '기록을 불러오는 중…'));
     return root;
   }
   if (status === 'error') {
+    ui.openDetail = null;
     const code = input.error && input.error.code ? String(input.error.code) : '';
     const msg = (input.error && input.error.message) || '오류 정보가 없습니다.';
     const p = el('p', code === 'CONTRACT_MISMATCH'
@@ -260,13 +263,16 @@ const renderEvents = (input, ui, onChange) => {
     return root;
   }
   if (status !== 'ok') {
+    ui.openDetail = null;
     root.append(el('p', `기록 확인 불가(${status || 'unknown'})`));
     return root;
   }
 
   const data = Array.isArray(input.data) ? input.data : [];
   // 새 자료(내용이 바뀐 목록)가 오면 열려 있던 상세를 닫고 필터를 다시 맞춥니다.
-  const fp = data.map(e => `${e && e.id}:${e && e.at}`).join('|');
+  // 필터 변경·상세 클릭의 재표시는 같은 입력이라 지문이 그대로이므로 영향 없습니다.
+  let fp = '';
+  try { fp = JSON.stringify(data); } catch { fp = String(data.length); }
   if (fp !== ui.eventsFp) { ui.eventsFp = fp; ui.openDetail = null; }
 
   if (data.length === 0) {
