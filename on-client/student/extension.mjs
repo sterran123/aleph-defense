@@ -235,6 +235,22 @@ const renderEventDetail = (ev) => {
     for (const item of rules) ul.append(el('li', `${item && item.id ? item.id : '확인 불가'}: ${item && item.text ? item.text : '(내용 없음)'}`));
     detail.append(ul);
   }
+  // 16단계: 원천이 지원하는 조치가 있으면 비활성 안내 버튼만 둡니다.
+  // 조치 요청(POST) 권한이 없으므로 어떤 요청도 보내지 않습니다.
+  const actions = Array.isArray(ev.supportedActions) ? ev.supportedActions : [];
+  detail.append(el('h5', '조치'));
+  if (!actions.length) {
+    detail.append(el('p', '원천이 지원하는 조치가 없습니다(조치 버튼이 없는 것이 정상입니다).'));
+  } else {
+    for (const a of actions) {
+      const b = el('button', `${a} 미지원`);
+      b.type = 'button';
+      b.disabled = true;
+      b.setAttribute('aria-label', `${a} 미지원`);
+      detail.append(b);
+    }
+    detail.append(el('p', '조치 실행 연결은 준비 중입니다. 요청을 보내지 않습니다.'));
+  }
   return detail;
 };
 
@@ -324,6 +340,138 @@ const renderEvents = (input, ui, onChange) => {
   return root;
 };
 
+// ---------- 16단계: 기기·세션·알림·점검 정보와 미지원 조치 안내 ----------
+// renderStatus({ devices, sessions, notifications, diagnostics, mode })
+// devices·sessions·diagnostics: { status, mode, data?, error? }
+// notifications: [{ resource, code, message }]
+// 다시 시도는 제공 화면의 다시 불러오기 버튼으로만 합니다(자동 재요청 없음).
+const RETRY_HINT = '다시 시도는 위쪽 다시 불러오기 버튼을 직접 누르세요.';
+
+const statusResourceBlock = (title, resource, renderData) => {
+  const section = el('section');
+  section.append(el('h3', title));
+  const notice = modeNotice(resource);
+  if (notice) section.append(notice);
+  if (!resource || resource.status === 'loading') {
+    section.append(el('p', `${title} 불러오는 중…`));
+    return section;
+  }
+  if (resource.status === 'idle') {
+    section.append(el('p', `${title} 아직 조회 전(idle)`));
+    return section;
+  }
+  if (resource.status === 'error') {
+    const err = resource.error || {};
+    const timedOut = err.code === 'TIMEOUT';
+    const p = el('p', `${title} 불러오기 실패${timedOut ? '(시간 초과)' : ''}: ${err.message || '오류 정보가 없습니다.'}`);
+    p.setAttribute('data-student-error', 'true');
+    section.append(p);
+    section.append(el('p', RETRY_HINT));
+    return section;
+  }
+  if (resource.status !== 'ok') {
+    section.append(el('p', `${title} 확인 불가(${resource.status || 'unknown'})`));
+    return section;
+  }
+  renderData(section, resource.data);
+  return section;
+};
+
+const renderStatus = ({ devices, sessions, notifications, diagnostics, mode } = {}) => {
+  const root = el('div');
+  root.setAttribute('data-student-view', 'status');
+  const topNotice = modeNotice({ mode });
+  if (topNotice) root.append(topNotice);
+
+  // 등록 기기
+  root.append(statusResourceBlock('등록 기기', devices, (section, list) => {
+    if (!Array.isArray(list) || list.length === 0) {
+      section.append(el('p', '등록된 기기가 없습니다.'));
+      return;
+    }
+    const ul = el('ul');
+    for (const d of list) {
+      ul.append(el('li', `${(d && (d.label || d.id)) || '확인 불가'} · ${labeled(DEVICE_STATUS, d && d.status)}`));
+    }
+    section.append(ul);
+  }));
+
+  // 세션 — 지금 검증된 연결 하나만 옵니다.
+  root.append(statusResourceBlock('현재 세션', sessions, (section, list) => {
+    if (!Array.isArray(list) || list.length === 0) {
+      section.append(el('p', '현재 연결된 세션이 없습니다.'));
+      return;
+    }
+    const ul = el('ul');
+    for (const s of list) {
+      ul.append(el('li', `${(s && s.id) || '확인 불가'} · ${labeled(SESSION_STATUS, s && s.status)}`));
+    }
+    section.append(ul);
+    section.append(el('p', '지금 검증된 연결 하나만 표시됩니다. 지난 세션 목록이 아닙니다.'));
+  }));
+
+  // 알림 — 제공 코드가 모아 준 실패·점검 필요 항목
+  const notif = el('section');
+  notif.append(el('h3', '알림'));
+  if (!Array.isArray(notifications) || notifications.length === 0) {
+    notif.append(el('p', '주의할 알림이 없습니다.'));
+  } else {
+    const ul = el('ul');
+    for (const n of notifications) {
+      ul.append(el('li', `[${(n && n.resource) || '확인 불가'}] ${(n && n.code) || '확인 불가'} — ${(n && n.message) || '(내용 없음)'}`));
+    }
+    notif.append(ul);
+  }
+  root.append(notif);
+
+  // 연결 점검(diagnostics) — 비밀 없는 값만 표시
+  let diagData = null;
+  root.append(statusResourceBlock('연결 점검', diagnostics, (section, d) => {
+    diagData = d || {};
+    const eng = d && d.engine ? d.engine : {};
+    const dl = el('dl');
+    const row = (k, v) => { dl.append(el('dt', k)); dl.append(el('dd', v)); };
+    row('requestId', (d && d.requestId) || '확인 불가');
+    row('component', (d && d.component) || '확인 불가');
+    row('version', (d && d.version) || '확인 불가');
+    row('checkedAt', (d && d.checkedAt) || '확인 불가');
+    row('engine.mode', eng.mode || '확인 불가');
+    row('engine.code', eng.code || '확인 불가');
+    section.append(dl);
+  }));
+
+  // 도움정보 복사 — 사용자가 누를 때만 안전한 점검 값을 복사합니다.
+  const help = el('section');
+  help.append(el('h3', '도움 정보'));
+  help.append(el('p', '아래 버튼을 누르면 도움 요청에 쓸 안전한 점검 값(식별자·버전·확인 시각·엔진 상태)을 복사합니다. 열쇠·비밀 값은 포함하지 않습니다.'));
+  const copyBtn = el('button', '도움정보 복사');
+  copyBtn.type = 'button';
+  const copyNote = el('p');
+  copyBtn.addEventListener('click', () => {
+    const d = diagData || {};
+    const eng = d.engine || {};
+    const text = [
+      `requestId: ${d.requestId || '확인 불가'}`,
+      `component: ${d.component || '확인 불가'}`,
+      `version: ${d.version || '확인 불가'}`,
+      `checkedAt: ${d.checkedAt || '확인 불가'}`,
+      `engine.mode: ${eng.mode || '확인 불가'}`,
+      `engine.code: ${eng.code || '확인 불가'}`,
+      `mode: ${mode || '확인 불가'}`,
+    ].join('\n');
+    const done = () => { copyNote.textContent = '도움 요청에 쓸 값을 복사했습니다.'; };
+    const fail = () => { copyNote.textContent = '복사에 실패했습니다. 화면의 값을 직접 적어 주세요.'; };
+    try {
+      const p = navigator.clipboard && navigator.clipboard.writeText(text);
+      if (p && typeof p.then === 'function') p.then(done, fail); else done();
+    } catch { fail(); }
+  });
+  help.append(copyBtn);
+  help.append(copyNote);
+  root.append(help);
+  return root;
+};
+
 export function createStudentView({ onChange } = {}) {
   const ui = { filter: { kind: 'all', app: 'all', access: 'all' }, openDetail: null, eventsFp: null };
   const rerender = () => { if (typeof onChange === 'function') onChange(); };
@@ -331,7 +479,7 @@ export function createStudentView({ onChange } = {}) {
     renderIdentity,
     renderDecision,
     renderEvents(input) { return renderEvents(input, ui, rerender); },
-    renderStatus() { return '학생 구현 대기: 기기·세션·알림과 연결 점검 상태를 구분하세요.'; },
+    renderStatus,
     renderVulnerabilities() { return '학생 구현 대기: 정확한 설치 버전·OSV 출처·조회 시각·부분 결과·조회 실패를 구분하세요.'; },
     renderAiConnection() { return '학생 구현 대기: 모델 응답 점검과 실제 사건 설명을 구분하고 AI 오류·취소·수동 복구를 안내하세요.'; },
     renderExplanation() { return '학생 구현 대기: 선택한 사건의 근거·규칙·현재 상태와 AI 설명을 연결하세요. 제안은 자동 실행하지 않습니다.'; },
