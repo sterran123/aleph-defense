@@ -738,6 +738,92 @@ const renderAction = (input = {}) => {
   return root;
 };
 
+// ---------- 20단계: 설치 패키지와 취약점 정보 대조 ----------
+// renderVulnerabilities({ status, mode, data?, error? })
+// data.status: complete·partial·not_checked·not_configured·unverifiable
+// 조회 실패·미조회는 「취약점 없음」이 아니며, 이미 받은 취약점 ID 는 지우지 않습니다.
+const SCAN_STATUS_LABEL = {
+  complete: '모두 조회(complete)',
+  partial: '일부 조회 실패(partial)',
+  not_checked: '아직 조회 안 함(not_checked)',
+  not_configured: '조회 준비 미완료(not_configured)',
+  unverifiable: 'lock 파일 확인 불가(unverifiable)',
+};
+const PACKAGE_STATUS_LABEL = {
+  known_vulnerabilities: '알려진 항목 있음(known_vulnerabilities)',
+  none_found: '알려진 항목 없음(none_found)',
+  unverifiable: '조회 확인 불가(unverifiable)',
+};
+
+const renderVulnerabilities = (input = {}) => {
+  const { status } = input || {};
+  const root = el('div');
+  root.setAttribute('data-student-view', 'vulnerabilities');
+  const notice = modeNotice(input);
+  if (notice) root.append(notice);
+
+  if (status === 'idle' || status === undefined || status === null) {
+    root.append(el('p', '설치 패키지 조회 전(idle)'));
+    return root;
+  }
+  if (status === 'loading') {
+    root.append(el('p', '설치 패키지 조회 중…'));
+    return root;
+  }
+  if (status === 'error') {
+    const err = input.error || {};
+    const p = el('p', `패키지 조회 실패: ${err.message || '오류 정보가 없습니다.'}${err.code ? ` (${err.code})` : ''}`);
+    p.setAttribute('data-student-error', 'true');
+    root.append(p);
+    root.append(el('p', '조회 실패는 「취약점 없음」이 아닙니다. 이전 결과를 현재 결과로 표시하지 않습니다.'));
+    return root;
+  }
+  if (status !== 'ok') {
+    root.append(el('p', `조회 상태 확인 불가(${status || 'unknown'})`));
+    return root;
+  }
+
+  const data = input.data || {};
+  const scanStatus = data.status;
+  root.append(el('p', `조회 상태: ${Object.hasOwn(SCAN_STATUS_LABEL, scanStatus) ? SCAN_STATUS_LABEL[scanStatus] : `확인 불가(${scanStatus || 'unknown'})`}`));
+  const meta = el('dl');
+  const metaRow = (name, value) => { meta.append(el('dt', name)); meta.append(el('dd', value)); };
+  metaRow('lock 파일 버전', data.lockfileVersion !== undefined && data.lockfileVersion !== null ? String(data.lockfileVersion) : '확인 불가');
+  metaRow('lock 파일 해시', data.lockfileHash || '확인 불가');
+  metaRow('조회 시각', data.checkedAt || '확인 불가');
+  root.append(meta);
+
+  const packages = Array.isArray(data.packages) ? data.packages : [];
+  if (!packages.length) {
+    root.append(el('p', scanStatus === 'complete'
+      ? '표시할 패키지 조회 결과가 없습니다.'
+      : '패키지 조회 결과가 없습니다. 조회 실패·미조회·확인 불가는 「취약점 없음」이 아닙니다.'));
+    return root;
+  }
+  const list = el('ul');
+  for (const pkg of packages) {
+    const li = el('li');
+    const name = pkg && pkg.name !== undefined && pkg.name !== null ? String(pkg.name) : '확인 불가';
+    const version = pkg && pkg.version !== undefined && pkg.version !== null ? String(pkg.version) : '확인 불가';
+    li.setAttribute('data-student-package-name', name);
+    li.setAttribute('data-student-package-version', version);
+    const findings = Array.isArray(pkg && pkg.vulnerabilities) ? pkg.vulnerabilities : [];
+    let statusText = pkg && Object.hasOwn(PACKAGE_STATUS_LABEL, pkg.status) ? PACKAGE_STATUS_LABEL[pkg.status] : `확인 불가(${pkg && pkg.status || 'unknown'})`;
+    if (pkg && pkg.status === 'unverifiable' && findings.length) statusText = '일부 확인 · 전체 조회 확인 불가(unverifiable)';
+    li.append(el('p', `${name}@${version} · ${statusText} · 출처 ${pkg && pkg.source || '확인 불가'} · 조회 시각 ${pkg && pkg.checkedAt || '확인 불가'}`));
+    if (findings.length) {
+      const findingList = el('ul');
+      for (const finding of findings) {
+        findingList.append(el('li', `${finding && finding.id ? finding.id : '확인 불가'} · 수정 ${finding && finding.modified ? finding.modified : '확인 불가'}`));
+      }
+      li.append(findingList);
+    }
+    list.append(li);
+  }
+  root.append(list);
+  return root;
+};
+
 export function createStudentView({ onChange } = {}) {
   const ui = { filter: { kind: 'all', app: 'all', access: 'all' }, openDetail: null, eventsFp: null };
   const rerender = () => { if (typeof onChange === 'function') onChange(); };
@@ -746,7 +832,7 @@ export function createStudentView({ onChange } = {}) {
     renderDecision,
     renderEvents(input) { return renderEvents(input, ui, rerender); },
     renderStatus,
-    renderVulnerabilities() { return '학생 구현 대기: 정확한 설치 버전·OSV 출처·조회 시각·부분 결과·조회 실패를 구분하세요.'; },
+    renderVulnerabilities,
     renderAiConnection,
     renderExplanation,
     renderAction,
