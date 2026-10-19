@@ -579,13 +579,6 @@ const renderExplanation = (input = {}) => {
 
   // 성공 표시 전에 설명이 이 기록과 맞는지 다시 대조합니다.
   const data = res.data;
-  const evidence = Array.isArray(event.evidence) ? event.evidence : [];
-  const rules = Array.isArray(event.rules) ? event.rules : [];
-  const state = event.state || {};
-  const supported = Array.isArray(event.supportedActions) ? event.supportedActions : [];
-  const evidenceText = new Map(evidence.map(row => [row && row.id, row && row.text]));
-  const cited = Array.isArray(data.evidenceIds) ? data.evidenceIds : [];
-  const proposals = Array.isArray(data.proposals) ? data.proposals : null;
   const unusable = (why) => {
     const p = el('p', `이 AI 설명은 쓸 수 없습니다: ${why}`);
     p.setAttribute('data-student-error', 'true');
@@ -596,6 +589,13 @@ const renderExplanation = (input = {}) => {
   if (!data || typeof data !== 'object' || Array.isArray(data)) {
     return unusable('응답 형식을 확인할 수 없습니다.');
   }
+  const evidence = Array.isArray(event.evidence) ? event.evidence : [];
+  const rules = Array.isArray(event.rules) ? event.rules : [];
+  const state = event.state || {};
+  const supported = Array.isArray(event.supportedActions) ? event.supportedActions : [];
+  const evidenceText = new Map(evidence.map(row => [row && row.id, row && row.text]));
+  const cited = Array.isArray(data.evidenceIds) ? data.evidenceIds : [];
+  const proposals = Array.isArray(data.proposals) ? data.proposals : null;
   if (data.executed === true || data.requiresHumanConfirmation !== true) {
     return unusable('AI가 이미 실행했다고 답했거나 사람 확인 없이 실행된다고 답한 설명은 표시하지 않습니다.');
   }
@@ -728,7 +728,7 @@ const renderAction = (input = {}) => {
     if (receipt.superseded === true) root.append(el('p', '이전 조회는 최신 결과를 대신하지 않습니다(superseded).'));
   }
   if (input.observation && status !== 'succeeded') {
-    root.append(el('p', `원천 관측 ${input.observation.observedAt || '확인 불가'} · 실제 효과 ${input.observation.effectApplied}`));
+    root.append(el('p', `원천 관측 ${input.observation.observedAt || '확인 불가'} · 실제 효과 ${input.observation.effectApplied ?? '확인 불가'}`));
   }
   root.append(el('p', '이 칸에는 버튼이 없습니다. 준비·집행·재조회·취소는 제공 화면의 버튼을 직접 눌러 진행합니다.'));
 
