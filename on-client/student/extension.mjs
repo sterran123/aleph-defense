@@ -17,11 +17,13 @@ const el = (tag, text) => {
   return node;
 };
 
-// 원래 값과 한국어 뜻을 함께 보여 줍니다. 목록에 없는 값은 확인 불가로 둡니다.
+// 원래 값과 한국어 뜻을 함께 보여 줍니다. 목록에 없는 값은 확인 불가(unknown)로 정리하고
+// 받은 원래 값은 뒤에 따로 적습니다.
 const labeled = (map, value) => {
   const raw = value === undefined || value === null ? 'unknown' : String(value);
   const known = Object.hasOwn(map, raw);
-  return `${known ? map[raw] : '확인 불가'}(${raw})`;
+  const base = `${known ? map[raw] : '확인 불가'}(${known ? raw : 'unknown'})`;
+  return !known && raw !== 'unknown' ? `${base} · 받은 값: ${raw}` : base;
 };
 
 // 확인 불가 계열 오류와 연결 실패를 구분해 문구를 만듭니다.
@@ -156,16 +158,19 @@ const renderDecision = (input = {}) => {
   const data = input.data || {};
   const raw = data.decision === undefined || data.decision === null ? 'unknown' : String(data.decision);
   const known = Object.hasOwn(DECISION_LABEL, raw);
-  const label = known ? DECISION_LABEL[raw] : DECISION_LABEL.unknown;
+  const shown = known ? raw : 'unknown';
   const appId = data.appId || input.appId || '확인 불가';
 
-  const result = el('p', `${known ? label : '판정 확인 불가'}(${raw})`);
-  result.setAttribute('data-student-decision', raw);
+  const result = el('p', `${DECISION_LABEL[shown]}(${shown})`);
+  result.setAttribute('data-student-decision', shown);
   root.append(result);
+  if (!known && raw !== 'unknown') {
+    root.append(el('p', `목록에 없는 판정값을 받았습니다(받은 값: ${raw}). 확인 불가로 처리합니다.`));
+  }
   root.append(el('p', `업무 앱: ${appId}`));
   root.append(el('p', `이유: ${data.reason || '확인 불가'}`));
   root.append(el('p', `판정 시각: ${data.checkedAt || '확인 불가'}`));
-  root.append(el('p', DECISION_NOTE[known ? raw : 'unknown']));
+  root.append(el('p', DECISION_NOTE[shown]));
   return root;
 };
 
