@@ -1,0 +1,21 @@
+{
+  "name": "aleph-defense-product-v6",
+  "version": "0.1.0",
+  "private": true,
+  "description": "ALEPH 방어전 4~6차 제품 시작 틀. 외부 패키지 없이 Node 20 이상에서 돌아갑니다.",
+  "type": "module",
+  "engines": {
+    "node": ">=20"
+  },
+  "scripts": {
+    "test": "node --test test/public/p0-platform.test.mjs test/public/d1-policy.test.mjs test/public/d2-events.test.mjs test/public/d3-response.test.mjs test/public/d4-restore.test.mjs",
+    "test:d1": "node --test test/public/d1-policy.test.mjs",
+    "test:d2": "node --test test/public/d2-events.test.mjs",
+    "test:d3": "node --test test/public/d3-response.test.mjs",
+    "test:d4": "node --test test/public/d4-restore.test.mjs",
+    "start:local": "node scripts/serve-local.mjs",
+    "events": "node tools/event-generator.mjs",
+    "check:platform": "node scripts/platform-sums.mjs",
+    "test:platform": "node --test test/platform/supabase-store-pages.test.mjs"
+  }
+}

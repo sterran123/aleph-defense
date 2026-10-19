@@ -1,0 +1,1 @@
+원본: packages/defense-product-contracts (0.1.4). 원본과 같은지는 SHA256SUMS 로 확인합니다.

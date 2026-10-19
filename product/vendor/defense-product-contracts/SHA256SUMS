@@ -1,0 +1,11 @@
+1d3a3b6aa3b45dbbece208dd6fb6eac2fa4cae5bd3e6356ab7341b41b2c599f6  ./README.md
+5e948dc45f6032e0016df3c8ea79b7865644edcc44ce9d77b801955613c7a64e  ./SOURCE.txt
+6545ca6e3041b61d608d0062361dfedac4a4a469424f8af73b0740d7a96b6a85  ./index.mjs
+12d8c48c328a877c8b2753bdfdf4b346837db3447db703c628c011cd8ffe6861  ./package.json
+4f95eccf5f30d52bebad47cfc0a874243a4b2bcbe0b907ffe7f3fd93efd5548d  ./src/backup.mjs
+bfe3e53f134ac90d0a0ff47050a5e7059f1f85143735e6a2e53b88409cbacfa2  ./src/canonical-json.mjs
+1c8ecd077fc65d55970d1b632e093d60f6aa14dda0f121f875cf31ed8c7b5bbe  ./src/errors.mjs
+54dd1f40f330ff16418e8c48ef1610a0abef659b3cb8fb9cf1d9227b48421a9c  ./src/executor-log.mjs
+76d11b5c96b20736ef607fb7e2ff80e06e249006da293f0b944987ad8c6d7ad9  ./src/operation.mjs
+50687538b4eb0c7036abaa0a8dd3a04b91daecc1dfdc0078a65318dab53c7ac5  ./src/platform-integrity.mjs
+1ec46d5faac47463dda01d41ab52a433f3882a27a6d3cbc05052f1eadee18d3a  ./src/policy.mjs
