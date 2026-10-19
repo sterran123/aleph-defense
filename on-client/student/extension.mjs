@@ -543,9 +543,13 @@ const renderAiConnection = (input = {}) => {
   return root;
 };
 
-// ---------- 17단계 기초 / 18단계 완성 대상: AI 사건 설명 ----------
+// ---------- 18단계: 근거가 있는 AI 사건 설명 ----------
 // renderExplanation({ event, explanation, checkedAt })
+// explanation.data: { summary, evidenceIds, proposals:[{action,evidenceIds,reason}], requiresHumanConfirmation:true, executed:false }
 // 성공한 설명에만 data-student-explanation-event 속성을 붙입니다.
+// 설명이 이 기록의 근거·규칙·상태와 맞지 않으면 쓸 수 없다고 적고 내용을 지어내지 않습니다.
+const EXPLANATION_STATE_NAME = { access: '접속', session: '세션', device: '기기' };
+
 const renderExplanation = (input = {}) => {
   const { event, explanation } = input || {};
   const root = el('div');
@@ -568,14 +572,88 @@ const renderExplanation = (input = {}) => {
     root.append(el('p', '기록은 그대로입니다. 과제 실패가 아닙니다.'));
     return root;
   }
-  if (res.status !== 'ok' || !res.data) {
+  if (res.status !== 'ok') {
     root.append(el('p', `사건 ${event.id}의 AI 설명을 아직 받지 않았습니다.`));
     return root;
   }
 
+  // 성공 표시 전에 설명이 이 기록과 맞는지 다시 대조합니다.
+  const data = res.data;
+  const evidence = Array.isArray(event.evidence) ? event.evidence : [];
+  const rules = Array.isArray(event.rules) ? event.rules : [];
+  const state = event.state || {};
+  const supported = Array.isArray(event.supportedActions) ? event.supportedActions : [];
+  const evidenceText = new Map(evidence.map(row => [row && row.id, row && row.text]));
+  const cited = Array.isArray(data.evidenceIds) ? data.evidenceIds : [];
+  const proposals = Array.isArray(data.proposals) ? data.proposals : null;
+  const unusable = (why) => {
+    const p = el('p', `이 AI 설명은 쓸 수 없습니다: ${why}`);
+    p.setAttribute('data-student-error', 'true');
+    root.append(p);
+    root.append(el('p', '기록은 그대로입니다.'));
+    return root;
+  };
+  if (!data || typeof data !== 'object' || Array.isArray(data)) {
+    return unusable('응답 형식을 확인할 수 없습니다.');
+  }
+  if (data.executed === true || data.requiresHumanConfirmation !== true) {
+    return unusable('AI가 이미 실행했다고 답했거나 사람 확인 없이 실행된다고 답한 설명은 표시하지 않습니다.');
+  }
+  const missing = cited.filter(ref => !evidenceText.has(ref));
+  if (cited.length === 0 || missing.length > 0) {
+    return unusable(`인용한 근거가 이 기록과 맞지 않습니다(근거 불일치${missing.length ? `: ${missing.join(', ')}` : ''}). 내용을 지어내지 않습니다.`);
+  }
+  if (proposals === null) {
+    return unusable('응답의 제안 형식을 확인할 수 없습니다.');
+  }
+  if (proposals.some(p => !p || !supported.includes(p.action))) {
+    return unusable('원천이 지원하지 않는 조치를 제안한 설명은 표시하지 않습니다.');
+  }
+
   root.setAttribute('data-student-explanation-event', String(event.id));
   root.append(el('h4', `AI 설명(참고용) — 사건 ${event.id}`));
-  root.append(el('p', res.data.summary || '(요약 없음)'));
+  root.append(el('p', '아래 요약은 AI가 이 기록을 읽고 쓴 해석입니다. 사실 판단은 인용한 근거와 원천이 알려 준 현재 상태를 기준으로 하세요.'));
+  root.append(el('p', data.summary || '(요약 없음)'));
+
+  root.append(el('h5', '인용한 근거'));
+  const evidenceList = el('ul');
+  for (const ref of cited) evidenceList.append(el('li', `${ref} — ${evidenceText.get(ref)}`));
+  root.append(evidenceList);
+
+  root.append(el('h5', '적용 규칙'));
+  if (!rules.length) {
+    root.append(el('p', '표시할 규칙이 없습니다.'));
+  } else {
+    const ruleList = el('ul');
+    for (const row of rules) ruleList.append(el('li', `${row && row.id ? row.id : '확인 불가'} — ${row && row.text ? row.text : '(내용 없음)'}`));
+    root.append(ruleList);
+  }
+
+  const unknownStates = Object.keys(EXPLANATION_STATE_NAME).filter(key => state[key] === 'unknown');
+  root.append(el('h5', '확인되지 않은 현재 상태'));
+  if (!unknownStates.length) {
+    root.append(el('p', '없음'));
+  } else {
+    const stateList = el('ul');
+    for (const key of unknownStates) stateList.append(el('li', `${EXPLANATION_STATE_NAME[key]}: 확인 불가(unknown)`));
+    root.append(stateList);
+  }
+
+  root.append(el('h5', '조치 제안'));
+  if (!proposals.length) {
+    root.append(el('p', supported.length === 0
+      ? '원천이 지원하는 조치가 없어 제안이 없습니다(정상).'
+      : 'AI가 이 기록에 맞는 조치를 제안하지 않았습니다.'));
+    root.append(el('p', 'AI는 아무것도 실행하지 않았습니다.'));
+  } else {
+    const proposalList = el('ul');
+    for (const p of proposals) {
+      const refs = Array.isArray(p.evidenceIds) && p.evidenceIds.length ? ` (근거: ${p.evidenceIds.join(', ')})` : '';
+      proposalList.append(el('li', `${p.action} — ${p.reason || '(이유 없음)'}${refs}`));
+    }
+    root.append(proposalList);
+    root.append(el('p', '제안은 실행되지 않았습니다. 사람이 확인해야 실행되며, 집행은 제공 화면의 「조치 준비」와 확인 절차를 따릅니다.'));
+  }
   return root;
 };
 
