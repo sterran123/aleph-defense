@@ -1,7 +1,4 @@
 import { createHash, randomUUID } from 'node:crypto';
-import { readFileSync, writeFileSync } from 'node:fs';
-import { tmpdir } from 'node:os';
-import { join } from 'node:path';
 import { createClient } from '@supabase/supabase-js';
 import { createLoginVerifier } from './verify-login.mjs';
 import config from '../aleph.config.json' with { type: 'json' };
@@ -41,42 +38,44 @@ function asNote(row) {
   return { id: row.id, title: row.title, body: row.content };
 }
 
-const BACKUP_FILE = join(tmpdir(), 'vault_notes_backup.json');
-const backupMap = new Map();
+const BACKUP_COLUMNS = 'note_id,owner_id,title,content,content_sha256,captured_at';
 
-function readBackupEntries() {
-  try {
-    const entries = JSON.parse(readFileSync(BACKUP_FILE, 'utf8'));
-    return Array.isArray(entries) ? entries : null;
-  } catch {
-    return null;
+function hashContent(content) {
+  return createHash('sha256').update(content).digest('hex');
+}
+
+function isVerifiedBackup(backup, { id, ownerId } = {}) {
+  return Boolean(backup && backup.note_id === id && backup.owner_id === ownerId
+    && typeof backup.title === 'string' && typeof backup.content === 'string'
+    && typeof backup.content_sha256 === 'string' && /^[a-f0-9]{64}$/iu.test(backup.content_sha256)
+    && hashContent(backup.content) === backup.content_sha256);
+}
+
+async function persistNoteBackup(supabase, { id, owner_id: ownerId, title, content }) {
+  if (typeof id !== 'string' || !UUID.test(id) || typeof ownerId !== 'string' || !UUID.test(ownerId)
+      || typeof title !== 'string' || typeof content !== 'string') {
+    throw new Error('INVALID_NOTE_BACKUP');
   }
-}
 
-function loadBackups() {
-  const entries = readBackupEntries();
-  if (!entries) return;
-  for (const entry of entries) {
-    if (Array.isArray(entry) && typeof entry[0] === 'string' && entry[1] && typeof entry[1] === 'object') {
-      backupMap.set(entry[0], entry[1]);
-    }
+  const contentHash = hashContent(content);
+  const { error: insertError } = await supabase.from('vault_note_backups').insert({
+    note_id: id,
+    owner_id: ownerId,
+    title,
+    content,
+    content_sha256: contentHash,
+  });
+  if (insertError && insertError.code !== '23505') throw new Error('BACKUP_PERSISTENCE_FAILED');
+
+  // Read the persisted record, not a process-local or client-supplied copy.
+  const { data: persisted, error: readError } = await supabase.from('vault_note_backups')
+    .select(BACKUP_COLUMNS)
+    .eq('note_id', id)
+    .maybeSingle();
+  if (readError || !isVerifiedBackup(persisted, { id, ownerId })) {
+    throw new Error('BACKUP_VERIFICATION_FAILED');
   }
-}
-loadBackups();
-
-function persistBackups() {
-  try {
-    writeFileSync(BACKUP_FILE, JSON.stringify([...backupMap.entries()]), { encoding: 'utf8', mode: 0o600 });
-  } catch {}
-}
-
-function saveNoteBackup(id, owner_id, title, content) {
-  if (!id || !owner_id || typeof title !== 'string' || typeof content !== 'string') return;
-  if (backupMap.has(id)) return; // keep earliest (pre-invasion) copy only
-  const contentHash = createHash('sha256').update(content).digest('hex');
-  const record = { id, owner_id, title, content, contentHash, savedAt: new Date().toISOString() };
-  backupMap.set(id, record);
-  persistBackups();
+  return persisted;
 }
 
 async function authorizedUser(request, verifyLogin) {
@@ -114,7 +113,9 @@ export function createNotesHandlers({ supabase, verifyLogin } = {}) {
           .order('created_at', { ascending: true });
         if (error || !Array.isArray(data)) return response.status(503).json({ error: 'DATA_UNAVAILABLE' });
         for (const row of data) {
-          saveNoteBackup(row.id, identity.userId, row.title, row.content);
+          await persistNoteBackup(supabase, {
+            id: row.id, owner_id: identity.userId, title: row.title, content: row.content,
+          });
         }
         return response.status(200).json(data.map(asNote));
       }
@@ -130,7 +131,9 @@ export function createNotesHandlers({ supabase, verifyLogin } = {}) {
       if (error || data?.id !== id || data?.owner_id !== identity.userId) {
         return response.status(503).json({ error: 'DATA_UNAVAILABLE' });
       }
-      saveNoteBackup(id, identity.userId, input.title, input.body);
+      await persistNoteBackup(supabase, {
+        id, owner_id: identity.userId, title: input.title, content: input.body,
+      });
       return response.status(201).json({ id });
     } catch {
       return response.status(503).json({ error: 'DATA_UNAVAILABLE' });
@@ -162,20 +165,25 @@ export function createNotesHandlers({ supabase, verifyLogin } = {}) {
         if (!data || data.owner_id !== identity.userId) {
           return response.status(404).json({ error: 'NOTE_NOT_FOUND' });
         }
-        saveNoteBackup(data.id, data.owner_id, data.title, data.content);
+        await persistNoteBackup(supabase, {
+          id: data.id, owner_id: data.owner_id, title: data.title, content: data.content,
+        });
         return response.status(200).json(asNote(data));
       }
 
       if (method === 'PUT') {
         const input = parseNoteInput(request.body, false);
         if (!input) return response.status(400).json({ error: 'INVALID_NOTE' });
-        const { data: beforeEdit } = await supabase.from('vault_notes')
+        const { data: beforeEdit, error: beforeEditError } = await supabase.from('vault_notes')
           .select('id,title,content,owner_id')
           .eq('id', id)
           .eq('owner_id', identity.userId)
           .maybeSingle();
+        if (beforeEditError) return response.status(503).json({ error: 'DATA_UNAVAILABLE' });
         if (beforeEdit) {
-          saveNoteBackup(beforeEdit.id, beforeEdit.owner_id, beforeEdit.title, beforeEdit.content);
+          await persistNoteBackup(supabase, {
+            id: beforeEdit.id, owner_id: beforeEdit.owner_id, title: beforeEdit.title, content: beforeEdit.content,
+          });
         }
         const { data, error } = await supabase.from('vault_notes')
           .update({ title: input.title, content: input.body })
@@ -190,13 +198,16 @@ export function createNotesHandlers({ supabase, verifyLogin } = {}) {
         return response.status(200).json(asNote(data));
       }
 
-      const { data: beforeDelete } = await supabase.from('vault_notes')
+      const { data: beforeDelete, error: beforeDeleteError } = await supabase.from('vault_notes')
         .select('id,title,content,owner_id')
         .eq('id', id)
         .eq('owner_id', identity.userId)
         .maybeSingle();
+      if (beforeDeleteError) return response.status(503).json({ error: 'DATA_UNAVAILABLE' });
       if (beforeDelete) {
-        saveNoteBackup(beforeDelete.id, beforeDelete.owner_id, beforeDelete.title, beforeDelete.content);
+        await persistNoteBackup(supabase, {
+          id: beforeDelete.id, owner_id: beforeDelete.owner_id, title: beforeDelete.title, content: beforeDelete.content,
+        });
       }
       const { data, error } = await supabase.from('vault_notes')
         .delete()
@@ -251,57 +262,36 @@ export function createNotesHandlers({ supabase, verifyLogin } = {}) {
       return response.status(400).json({ error: 'INVALID_ID' });
     }
 
-    // Re-read the private backup file for every restore; never trust a client-supplied copy.
-    const entries = readBackupEntries();
-    const backupEntry = entries?.find(entry => Array.isArray(entry) && entry[0] === id);
-    const backup = backupEntry?.[1];
-
-    // S10_BACKUP_UNVERIFIED: missing, malformed, or unverifiable copies fail closed.
-    if (!backup) {
-      return response.status(404).json({ error: 'BACKUP_NOT_FOUND' });
-    }
-    if (backup.id !== id || backup.owner_id !== identity.userId
-        || typeof backup.title !== 'string' || typeof backup.content !== 'string'
-        || typeof backup.contentHash !== 'string' || !/^[a-f0-9]{64}$/iu.test(backup.contentHash)) {
-      return response.status(409).json({ error: 'BACKUP_VERIFICATION_FAILED' });
-    }
-    const verifiedHash = createHash('sha256').update(backup.content).digest('hex');
-    if (backup.contentHash !== verifiedHash) {
-      return response.status(409).json({ error: 'BACKUP_VERIFICATION_FAILED' });
-    }
-
-    const { data: existing, error: readError } = await supabase.from('vault_notes')
-      .select('id,owner_id')
-      .eq('id', id)
+    // Re-read the server-only durable backup for every restore; never trust client data.
+    const { data: backup, error: backupReadError } = await supabase.from('vault_note_backups')
+      .select(BACKUP_COLUMNS)
+      .eq('note_id', id)
       .maybeSingle();
-    if (readError) return response.status(503).json({ error: 'DATA_UNAVAILABLE' });
-    if (existing && existing.owner_id !== identity.userId) {
-      return response.status(404).json({ error: 'NOTE_NOT_FOUND' });
+    if (backupReadError) return response.status(503).json({ error: 'DATA_UNAVAILABLE' });
+    if (!backup) return response.status(404).json({ error: 'BACKUP_NOT_FOUND' });
+    if (backup.owner_id !== identity.userId) return response.status(404).json({ error: 'BACKUP_NOT_FOUND' });
+    if (!isVerifiedBackup(backup, { id, ownerId: identity.userId })) {
+      return response.status(409).json({ error: 'BACKUP_VERIFICATION_FAILED' });
     }
 
-    // Restore exactly one row. No policy or audit tables are written here.
-    let restored;
-    if (existing) {
-      const { data, error } = await supabase.from('vault_notes')
-        .update({ title: backup.title, content: backup.content })
-        .eq('id', id)
-        .eq('owner_id', identity.userId)
-        .select('id,title,content,owner_id')
-        .single();
-      if (error || !data) return response.status(503).json({ error: 'DATA_UNAVAILABLE' });
-      restored = data;
-    } else {
-      const { data, error } = await supabase.from('vault_notes')
-        .insert({ id: backup.id, owner_id: backup.owner_id, title: backup.title, content: backup.content })
-        .select('id,title,content,owner_id')
-        .single();
-      if (error || !data) return response.status(503).json({ error: 'DATA_UNAVAILABLE' });
-      restored = data;
-    }
+    // The database function rechecks the immutable copy and restores one row plus
+    // an append-only audit event in the same transaction.
+    const { data: restored, error: restoreError } = await supabase
+      .rpc('restore_vault_note_with_audit', {
+        p_note_id: id,
+        p_owner_id: identity.userId,
+        p_title: backup.title,
+        p_content: backup.content,
+        p_content_sha256: backup.content_sha256,
+      })
+      .single();
+    if (restoreError?.code === 'P0002') return response.status(404).json({ error: 'NOTE_NOT_FOUND' });
+    if (restoreError?.code === '23514') return response.status(409).json({ error: 'BACKUP_VERIFICATION_FAILED' });
+    if (restoreError || !restored) return response.status(503).json({ error: 'DATA_UNAVAILABLE' });
 
-    const restoredHash = typeof restored.content === 'string'
-      ? createHash('sha256').update(restored.content).digest('hex') : null;
-    if (restored.id !== id || restored.owner_id !== identity.userId || restoredHash !== verifiedHash) {
+    const restoredHash = typeof restored.content === 'string' ? hashContent(restored.content) : null;
+    if (restored.id !== id || restored.owner_id !== identity.userId
+        || restored.title !== backup.title || restoredHash !== backup.content_sha256) {
       return response.status(503).json({ error: 'RESTORE_VERIFICATION_FAILED' });
     }
     return response.status(200).json(asNote(restored));
