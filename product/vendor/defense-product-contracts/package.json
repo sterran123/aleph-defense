@@ -1,0 +1,13 @@
+{
+  "name": "@aleph/defense-product-contracts",
+  "version": "0.1.4",
+  "private": true,
+  "description": "ALEPH 방어전 4~6차 제품 공개 계약(직렬화·정책 해시·백업 형식·작업 키). 외부 의존성 없음.",
+  "type": "module",
+  "main": "index.mjs",
+  "exports": { ".": "./index.mjs" },
+  "engines": { "node": ">=20" },
+  "scripts": {
+    "test": "node --test test/contracts.test.mjs test/executor-log.test.mjs"
+  }
+}
