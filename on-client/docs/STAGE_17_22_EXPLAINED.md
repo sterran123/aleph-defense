@@ -45,17 +45,18 @@ AI 사건 설명을 "증거와 규칙에 묶인 참고 자료"로 보여 주는 
 
 ### 구현
 - 성공 응답이면: 사건 ID + "참고용 설명" 제목 + `summary` + **인용 근거 ID와 그에 대응하는 이 기록의 근거 문장** 목록 + 규칙 목록 + `unknown`인 접속·세션·기기 상태를 따로 뽑아 "확인 불가(unknown)"로 표기 + 제안(이유·실행 예정 조치·왜 제안이 비었는지) + "제안은 실행되지 않았고 사람 확인 후에만 실행" 고지.
-- 쓸 수 없는 설명은 전부 `unusableExplanation`으로 내려 "쓸 수 없는 설명(unusable)" + 이유 + "원본 기록은 그대로 유지됩니다" + `data-student-unusable-explanation="true"` 표식: 객체가 아님, 근거 인용 없음, 이 기록에 없는 근거 ID, 지원하지 않는 조치 제안, `executed === true`, `requiresHumanConfirmation !== true`.
+- 쓸 수 없는 설명은 전부 `unusable(이유)`으로 내려 "이 AI 설명은 쓸 수 없습니다: 이유" + "기록은 그대로입니다" + `data-student-error="true"` 표식: 객체가 아님, 근거 인용 없음, 이 기록에 없는 근거 ID, 빠진 근거·중복 인용(기록의 근거 전체와 일치하지 않음), 지원하지 않는 조치 제안, 제안이 기록에 없는 근거를 인용, `executed === true`, `requiresHumanConfirmation !== true`.
 - 표식 `data-student-explanation-event`는 **검증된 성공 렌더에만** 붙습니다. 오류·로딩·자료 없음·근거 불일치 화면에는 붙지 않습니다.
-- 설명 본문에는 실패가 나도 `data-student-explanation-error`를 붙이고, 새 DOM이라 다른 기록 선택·새로고침 시 이전 설명이 남지 않습니다.
+- 설명 실패·쓸 수 없는 설명 문구에는 `data-student-error="true"`를 붙이고, 새 DOM이라 다른 기록 선택·새로고침 시 이전 설명이 남지 않습니다.
 
 ### 중간에 고친 문제
 - **`75f9efe` — 형태 검사 순서 오류**: 처음에는 `res.data`가 `null`·비객체일 때 `data.evidenceIds`/`data.proposals` 접근이 먼저 일어나 `TypeError`로 화면이 죽을 수 있었습니다. 형태 검사(`typeof !== 'object'`)를 앞으로 옮겨, 깨진 응답도 "쓸 수 없는 설명"으로 안전하게 떨어지게 고쳤습니다. 판정 측이 의도적으로 잘못된 응답을 넣는 `wrong_event_rejected` 검사와 직결되는 결함이었습니다.
+- **검토 후 근거 묶음 강화**: 처음에는 설명 본문의 `evidenceIds`만 기록 근거와 대조했는데, 제공 `validExplanation`이 요구하는 조건(인용이 중복 없이 기록 근거 **전체**와 일치, 각 제안의 `evidenceIds`도 기록 안에 있음)까지 학생 쪽 재검증이 못 미쳤습니다. 제안이 외부 근거를 인용하거나 인용이 일부만 되면 성공 표식이 붙을 수 있어, 빠진 근거·중복 인용·제안의 잘못된 근거 인용을 전부 `unusable`로 거부하도록 맞췄습니다. 근거 글이 없는 행이 `undefined`로 보이던 것도 `(내용 없음)`으로 내렸습니다.
 
 ### 판정 기준별 확인
-- `evidence_binding`: 인용 근거 ID 전부가 이 기록의 `event.evidence`에 실제 존재할 때만 성공 렌더 ✓
+- `evidence_binding`: 설명 본문과 각 제안이 인용한 근거 ID 전부가 이 기록의 `event.evidence`에 실제 존재하고, 인용이 중복 없이 기록 근거 전체와 일치할 때만 성공 렌더(제공 `validExplanation`과 같은 조건) ✓
 - `unknown_evidence`: `unknown` 상태를 접속·세션·기기로 나누어 "확인 불가"로 표기, 정상·안전으로 단정 안 함 ✓
-- `insufficient_evidence` / `wrong_event_rejected`: 근거 없음·틀린 근거·비객체 응답 → "쓸 수 없는 설명" 처리 ✓
+- `insufficient_evidence` / `wrong_event_rejected`: 근거 없음·틀린 근거·빠진 근거·제안의 잘못된 근거 인용·비객체 응답 → "쓸 수 없는 설명" 처리 ✓
 - `proposal_not_executed`: 제안 미실행·사람 확인 필요 고지, `executed:true`·확인 불필요 응답 거부 ✓
 - `non_ai_regression` / `explanation_refresh`: 이전 단계 함수 무변경, 새 DOM으로 잔여 설명 없음 ✓
 
@@ -92,12 +93,12 @@ AI 사건 설명을 "증거와 규칙에 묶인 참고 자료"로 보여 주는 
 잠금 파일에 있는 설치 패키지를 프로젝트 저장소의 승인 목록으로 OSV와 대조한 결과를 보여 주는 단계입니다. "조회했다"와 "조회하지 못했다"를 구분하고, 실패·미조회를 "취약점 없음"으로 쓰지 않는 게 핵심입니다.
 
 ### 입력
-`renderVulnerabilities({ status, mode, data?, error? })` — 전체 상태, `data.status`는 `complete/partial/not_checked/not_configured/unverifiable`, 패키지별 `status`는 `ok/known_vulnerabilities/none_found/unverifiable/not_checked`.
+`renderVulnerabilities({ status, mode, data?, error? })` — 전체 상태(`idle/loading/error/ok`), `data.status`는 `complete/partial/not_checked/not_configured/unverifiable`, 패키지별 `status`는 `known_vulnerabilities/none_found/unverifiable`(`STUDENT_PROMPTS.md`의 계약).
 
 ### 구현
 - `idle` → "설치 패키지 조회 전", `loading` → "조회 중", `error` → "패키지 조회 실패: 메시지(코드)" + `data-student-error`.
 - 성공이면 `data.status` 라벨 + 잠금 버전·잠금 해시·조회 시각 + 패키지 표: `이름@버전 · 상태 · 출처 · 조회 시각`, 취약점이 있으면 **취약점 ID + 수정일** 목록까지.
-- 패키지 상태 라벨: `ok` 정상, `known_vulnerabilities` "알려진 항목 있음", `none_found` "알려진 항목 없음", `unverifiable` "조회 확인 불가", `not_checked` "아직 조회 안 함". `unverifiable`인데 받은 취약점 ID가 있으면 지우지 않고 "일부 확인 · 전체 조회 확인 불가"로 남깁니다(`partial_preservation`).
+- 패키지 상태 라벨: `known_vulnerabilities` "알려진 항목 있음", `none_found` "알려진 항목 없음", `unverifiable` "조회 확인 불가". 계약에 없는 값은 `확인 불가(받은 값)`으로 내립니다. `unverifiable`인데 받은 취약점 ID가 있으면 지우지 않고 "일부 확인 · 전체 조회 확인 불가"로 남깁니다(`partial_preservation`).
 - `not_configured`는 "조회 준비 미완료", `not_checked`는 "조회하지 않은 항목"으로 구분하고, 끝에 "조회 실패·미조회·확인 불가는 「취약점 없음」이 아닙니다"를 붙여 `unavailable_not_clean`을 막습니다.
 - 각 패키지 행에 `data-student-package-name`·`data-student-package-version` 표식.
 
@@ -137,7 +138,7 @@ AI 사건 설명을 "증거와 규칙에 묶인 참고 자료"로 보여 주는 
 
 ## 남아 있는 UNV와 경계
 
-- **검증 방법**: 위의 "판정 기준별 확인"은 `STUDENT_PROMPTS.md`의 R4 판정표(17~20단계)와 v0.5 자동 확인 계약(21·22단계)을 원문과 대조한 결과이고, 핵심 분기는 DOM 가상 환경에서 직접 돌린 가상 단위 시험(31건 통과)으로 확인했습니다. 가상 시험은 심판 판정이 아니라 개발자 검증 기록입니다.
+- **검증 방법**: 위의 "판정 기준별 확인"은 `STUDENT_PROMPTS.md`의 R4 판정표(17~20단계)와 v0.5 자동 확인 계약(21·22단계)을 원문과 대조한 결과이고, 핵심 분기는 DOM 가상 환경에서 직접 돌린 가상 단위 시험(36건 통과)으로 확인했습니다. 가상 시험은 심판 판정이 아니라 개발자 검증 기록입니다.
 - **운영 측 권한에 묶인 항목**: 실제 AI 설명 호출 수용(17단계의 `ai_model_called`), 실제 원천 조치 효과(19단계), 실제 OSV 조회(20단계)는 담당자 연결·승인 패키지 설정 없이는 학생 화면에서 확인할 수 없습니다. 17단계는 권한 준비 후 공식 통과가 확인됐고, 19·20단계의 실제 원천 연결은 계속 UNV입니다.
 - **공식 판정**: 18~22단계의 공식 통과 확정은 서버 측 재검토와 제출·순서 권한에 달려 있습니다. 이 문서는 "공식 통과"가 아니라 "공개된 완료 기준을 원문이 충족한다"는 검증 기록입니다.
 - **비밀값**: 어느 단계에서도 앱·로그·문서에 키·토큰·계정 비밀값을 넣지 않았습니다. 실제 연결은 운영 환경의 자격 증명 준비로만 됩니다.

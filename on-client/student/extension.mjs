@@ -593,7 +593,9 @@ const renderExplanation = (input = {}) => {
   const rules = Array.isArray(event.rules) ? event.rules : [];
   const state = event.state || {};
   const supported = Array.isArray(event.supportedActions) ? event.supportedActions : [];
-  const evidenceText = new Map(evidence.map(row => [row && row.id, row && row.text]));
+  const evidenceText = new Map(evidence
+    .filter(row => row && row.id !== undefined && row.id !== null)
+    .map(row => [row.id, row.text]));
   const cited = Array.isArray(data.evidenceIds) ? data.evidenceIds : [];
   const proposals = Array.isArray(data.proposals) ? data.proposals : null;
   if (data.executed === true || data.requiresHumanConfirmation !== true) {
@@ -603,11 +605,19 @@ const renderExplanation = (input = {}) => {
   if (cited.length === 0 || missing.length > 0) {
     return unusable(`인용한 근거가 이 기록과 맞지 않습니다(근거 불일치${missing.length ? `: ${missing.join(', ')}` : ''}). 내용을 지어내지 않습니다.`);
   }
+  // 제공 검증과 같은 조건: 인용은 중복 없이 이 기록의 근거 전부를 빠짐없이 가리켜야 합니다.
+  if (new Set(cited).size !== cited.length || cited.length !== evidenceText.size) {
+    return unusable('인용한 근거가 이 기록의 근거와 빠짐없이 일치하지 않습니다(빠진 근거 또는 중복 인용). 내용을 지어내지 않습니다.');
+  }
   if (proposals === null) {
     return unusable('응답의 제안 형식을 확인할 수 없습니다.');
   }
   if (proposals.some(p => !p || !supported.includes(p.action))) {
     return unusable('원천이 지원하지 않는 조치를 제안한 설명은 표시하지 않습니다.');
+  }
+  if (proposals.some(p => !Array.isArray(p.evidenceIds) || p.evidenceIds.length === 0
+      || p.evidenceIds.some(ref => !evidenceText.has(ref)))) {
+    return unusable('제안이 이 기록에 없는 근거를 인용한 설명은 표시하지 않습니다.');
   }
 
   root.setAttribute('data-student-explanation-event', String(event.id));
@@ -617,7 +627,7 @@ const renderExplanation = (input = {}) => {
 
   root.append(el('h5', '인용한 근거'));
   const evidenceList = el('ul');
-  for (const ref of cited) evidenceList.append(el('li', `${ref} — ${evidenceText.get(ref)}`));
+  for (const ref of cited) evidenceList.append(el('li', `${ref} — ${evidenceText.get(ref) || '(내용 없음)'}`));
   root.append(evidenceList);
 
   root.append(el('h5', '적용 규칙'));
