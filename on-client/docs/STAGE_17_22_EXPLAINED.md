@@ -73,17 +73,19 @@ AI 사건 설명을 "증거와 규칙에 묶인 참고 자료"로 보여 주는 
 ### 구현
 - 상태별 분기: `idle`은 "아직 미실행", `prepared`는 "준비됐습니다. 아직 실행되지 않았습니다." + `confirmationExpiresAt` 기한 + "제공 화면의 확인 버튼으로 사람이 직접 확인한 뒤에만", `executing`은 "전달 중 … 완료가 아닙니다", `pending`은 "서버가 받았다는 것(ACK)은 실제 효과가 아닙니다", `denied`·`failed`·`expired`는 있는 그대로, `unknown`은 "결과 불명 … 성공으로도 효과 없음으로도 판단하지 말고 「원천 결과만 재조회」로 다시 조회".
 - **`succeeded`는 `observation.effectApplied === true`일 때만** "원천이 실제 효과를 확인했습니다"로 표기. 그 외에는 "결과 불명(unknown)"으로 내려 성공으로 쓰지 않습니다.
-- 사건 ID·근거 ID·조치 ID·대상 ID·세대·`requestId/receiptId/version`·`superseded`는 있는 값만 글자로 보여 줍니다.
-- 이 칸에는 버튼을 만들지 않고 "제공 화면의 버튼을 직접 눌러 진행"이라고 안내합니다. 표식(`data-student-action-event`, `data-student-action-request`)은 실제 상태 렌더에만 붙고 `idle`·`error`에는 붙지 않습니다.
+- 사건 ID·근거 ID·조치 ID·대상 ID·세대·`requestId/receiptId/version`·`replayed`·`superseded`는 있는 값만 글자로 보여 줍니다.
+- 접수의 `eventId`·`actionId`가 현재 사건·조치와 맞지 않으면 "확인 불가"로 표기하고 `data-student-action-request` 표식을 붙이지 않습니다(제공 `safeActionData`의 의도 묶음과 같은 조건). `replayed === true`는 "저장된 접수 재확인 · 새 집행 아님"으로 표기하고, `superseded`가 `unknown`·관측 없음 상태 밖에서 오면 상태와 맞지 않다고 표기합니다.
+- 이 칸에는 버튼을 만들지 않고 "제공 화면의 버튼을 직접 눌러 진행"이라고 안내합니다. 표식(`data-student-action-event`, `data-student-action-request`)은 실제 상태 렌더에만 붙고 `idle`·`error`·의도 불일치에는 붙지 않습니다.
 
 ### 중간에 고친 문제
 - **`75f9efe` — `effectApplied` 누락 표기**: 관측은 있는데 `effectApplied`가 빠진 입력에서 `실제 효과 undefined`로 출력되던 것을 `?? '확인 불가'`로 고쳐, 모르는 값을 정해진 표기로 내리는 공통 규칙에 맞췄습니다.
+- **검토 후 접수 묶음 강화**: 처음에는 영수증을 있는 그대로 글자로만 보여 줘, 다른 사건·조치의 접수(`eventId`·`actionId` 불일치)나 `superseded`가 어울리지 않는 상태에 붙은 입력도 "현재 결과"처럼 표기·표식될 수 있었습니다. 제공 `safeActionData`가 거부하는 조건(의도와 다른 접수, `superseded`는 `unknown`+관측 없음에서만)을 학생 쪽에서도 다시 대조해, 어긋나면 확인 불가 표기하고 요청 표식을 내리도록 맞췄습니다. `replayed`도 화면에 남겨 "같은 요청의 저장 접수"임을 드러냅니다.
 
 ### 판정 기준별 확인
 - `proposal_execution_separation`: `idle`에서 제안은 아직 실행되지 않았다고 표기, 성공 주장 없음 ✓
-- `human_confirmation` / `current_intent_binding`: `prepared`에서 "아직 실행하지 않음" + 사람 확인 기한 + 대상·영수증 함께 표기 ✓
+- `human_confirmation` / `current_intent_binding`: `prepared`에서 "아직 실행하지 않음" + 사람 확인 기한 + 대상·영수증 함께 표기, 접수의 사건·조치 ID가 현재 의도와 다르면 확인 불가로 내리고 요청 표식 없음 ✓
 - `observed_server_result`: `pending`에서 ACK≠효과, `succeeded`는 관측 `effectApplied===true`만 성공 표기 ✓
-- `duplicate_prevention` / `unknown_not_success` / `action_refresh`: 영수증·`superseded` 표기, 결과 불명은 재조회 안내, 새 DOM으로 이전 결과 잔류 없음 ✓
+- `duplicate_prevention` / `unknown_not_success` / `action_refresh`: 영수증·`replayed`·`superseded`(모순 시 확인 불가) 표기, 결과 불명은 재조회 안내, 새 DOM으로 이전 결과 잔류 없음 ✓
 
 ---
 
@@ -96,17 +98,18 @@ AI 사건 설명을 "증거와 규칙에 묶인 참고 자료"로 보여 주는 
 `renderVulnerabilities({ status, mode, data?, error? })` — 전체 상태(`idle/loading/error/ok`), `data.status`는 `complete/partial/not_checked/not_configured/unverifiable`, 패키지별 `status`는 `known_vulnerabilities/none_found/unverifiable`(`STUDENT_PROMPTS.md`의 계약).
 
 ### 구현
-- `idle` → "설치 패키지 조회 전", `loading` → "조회 중", `error` → "패키지 조회 실패: 메시지(코드)" + `data-student-error`.
-- 성공이면 `data.status` 라벨 + 잠금 버전·잠금 해시·조회 시각 + 패키지 표: `이름@버전 · 상태 · 출처 · 조회 시각`, 취약점이 있으면 **취약점 ID + 수정일** 목록까지.
+- `idle` → "설치 패키지 조회 전", `loading` → "조회 중", `error` → "패키지 조회 실패: 메시지(코드)" + `data-student-error`. `CANCELLED`·`REQUEST_CANCELLED`는 "조회 취소"로 구분하고 이전 결과를 현재 결과로 쓰지 않는다고 함께 붙입니다.
+- 성공이면 `data.status` 라벨 + 잠금 버전·잠금 해시·조회 시각 + `data.code`(있을 때) + `excluded.count`(조회 제외 건수) + 패키지 표: `이름@버전 · 상태 · 출처 · 조회 시각`, 취약점이 있으면 **취약점 ID + 수정일** 목록까지.
 - 패키지 상태 라벨: `known_vulnerabilities` "알려진 항목 있음", `none_found` "알려진 항목 없음", `unverifiable` "조회 확인 불가". 계약에 없는 값은 `확인 불가(받은 값)`으로 내립니다. `unverifiable`인데 받은 취약점 ID가 있으면 지우지 않고 "일부 확인 · 전체 조회 확인 불가"로 남깁니다(`partial_preservation`).
+- 제공 `normalizeScan`이 거부하는 모순은 "조회 결과 불일치(확인 불가)"로 내립니다: `none_found`인데 취약점 ID가 옴, `known_vulnerabilities`인데 빈 목록. 받은 ID 목록은 지우지 않습니다. 전체 `complete`에 확인 불가 행이 있거나 `partial`에 확인 불가 행이 없으면 "전체 상태와 패키지 결과가 맞지 않습니다"를 덧붙입니다.
 - `not_configured`는 "조회 준비 미완료", `not_checked`는 "조회하지 않은 항목"으로 구분하고, 끝에 "조회 실패·미조회·확인 불가는 「취약점 없음」이 아닙니다"를 붙여 `unavailable_not_clean`을 막습니다.
 - 각 패키지 행에 `data-student-package-name`·`data-student-package-version` 표식.
 
 ### 판정 기준별 확인
 - `exact_lock_version`: 잠금 버전·해시·조회 시각 + 설치된 정확 버전(`name@version`) 표기 ✓
 - `osv_match`: `known_vulnerabilities`에 취약점 ID·수정일 목록 ✓
-- `lookup_unavailable` / `no_results_distinction` / `partial_preservation`: 설정 안 됨·미조회·확인 불가·일부 결과를 각각 구분하고 "취약점 없음"으로 섞지 않음 ✓
-- `refresh_replaces` / `request_recovery` / `stale_response_blocked`: 새 DOM, 요청 실패·취소는 실패 문구로 표기하고 깨끗한 것처럼 보이지 않음 ✓
+- `lookup_unavailable` / `no_results_distinction` / `partial_preservation`: 설정 안 됨·미조회·확인 불가·일부 결과·조회 제외 건수를 각각 구분하고 "취약점 없음"으로 섞지 않음, 계약 모순 행·전체-행 불일치는 확인 불가로 표기 ✓
+- `refresh_replaces` / `request_recovery` / `stale_response_blocked`: 새 DOM, 요청 실패·취소는 실패·취소 문구로 표기하고 깨끗한 것처럼 보이지 않음 ✓
 
 ---
 
@@ -138,7 +141,7 @@ AI 사건 설명을 "증거와 규칙에 묶인 참고 자료"로 보여 주는 
 
 ## 남아 있는 UNV와 경계
 
-- **검증 방법**: 위의 "판정 기준별 확인"은 `STUDENT_PROMPTS.md`의 R4 판정표(17~20단계)와 v0.5 자동 확인 계약(21·22단계)을 원문과 대조한 결과이고, 핵심 분기는 DOM 가상 환경에서 직접 돌린 가상 단위 시험(36건 통과)으로 확인했습니다. 가상 시험은 심판 판정이 아니라 개발자 검증 기록입니다.
+- **검증 방법**: 위의 "판정 기준별 확인"은 `STUDENT_PROMPTS.md`의 R4 판정표(17~20단계)와 v0.5 자동 확인 계약(21·22단계)을 원문과 대조한 결과이고, 핵심 분기는 DOM 가상 환경에서 직접 돌린 가상 단위 시험(48건 통과)으로 확인했습니다. 가상 시험은 심판 판정이 아니라 개발자 검증 기록입니다.
 - **운영 측 권한에 묶인 항목**: 실제 AI 설명 호출 수용(17단계의 `ai_model_called`), 실제 원천 조치 효과(19단계), 실제 OSV 조회(20단계)는 담당자 연결·승인 패키지 설정 없이는 학생 화면에서 확인할 수 없습니다. 17단계는 권한 준비 후 공식 통과가 확인됐고, 19·20단계의 실제 원천 연결은 계속 UNV입니다.
 - **공식 판정**: 18~22단계의 공식 통과 확정은 서버 측 재검토와 제출·순서 권한에 달려 있습니다. 이 문서는 "공식 통과"가 아니라 "공개된 완료 기준을 원문이 충족한다"는 검증 기록입니다.
 - **비밀값**: 어느 단계에서도 앱·로그·문서에 키·토큰·계정 비밀값을 넣지 않았습니다. 실제 연결은 운영 환경의 자격 증명 준비로만 됩니다.

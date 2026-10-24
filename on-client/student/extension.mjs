@@ -733,18 +733,38 @@ const renderAction = (input = {}) => {
   if (input.target && input.target.id) {
     root.append(el('p', `실제 원천 대상: ${input.target.id} · 세대 ${input.target.generation ?? '확인 불가'}`));
   }
+  // 제공 검증과 같은 조건: 접수는 현재 사건·조치 의도에 묶여 있어야 하고,
+  // superseded 는 결과 불명(unknown)·관측 없음 상태에서만 올 수 있습니다.
+  const receiptBound = !receipt
+    || ((receipt.eventId === undefined || receipt.eventId === null
+        || (event && event.id !== undefined && event.id !== null && receipt.eventId === event.id))
+      && (receipt.actionId === undefined || receipt.actionId === null
+        || (input.actionId !== undefined && input.actionId !== null && receipt.actionId === input.actionId)));
   if (receipt) {
     root.append(el('p', `요청 ${receipt.requestId || '확인 불가'} · 영수증 ${receipt.receiptId || '확인 불가'} · 버전 ${receipt.version ?? '확인 불가'}`));
-    if (receipt.superseded === true) root.append(el('p', '이전 조회는 최신 결과를 대신하지 않습니다(superseded).'));
+    if (!receiptBound) {
+      const p = el('p', '접수 내용이 현재 사건·조치와 맞지 않습니다(확인 불가). 최신 결과로 보지 않습니다.');
+      p.setAttribute('data-student-error', 'true');
+      root.append(p);
+    }
+    if (receipt.replayed === true) root.append(el('p', '같은 요청의 저장된 접수를 다시 확인했습니다(replayed). 새 집행이 아닙니다.'));
+    if (receipt.superseded === true) {
+      if (status !== 'unknown' || input.observation) {
+        const p = el('p', '접수의 superseded 표시가 현재 상태와 맞지 않습니다(확인 불가).');
+        p.setAttribute('data-student-error', 'true');
+        root.append(p);
+      }
+      root.append(el('p', '이전 조회는 최신 결과를 대신하지 않습니다(superseded).'));
+    }
   }
   if (input.observation && status !== 'succeeded') {
     root.append(el('p', `원천 관측 ${input.observation.observedAt || '확인 불가'} · 실제 효과 ${input.observation.effectApplied ?? '확인 불가'}`));
   }
   root.append(el('p', '이 칸에는 버튼이 없습니다. 준비·집행·재조회·취소는 제공 화면의 버튼을 직접 눌러 진행합니다.'));
 
-  // 실제 상태를 그린 화면에만 성공 표식을 붙입니다(idle·오류 화면에는 붙이지 않음).
+  // 실제 상태를 그린 화면에만 성공 표식을 붙입니다(idle·오류·의도 불일치 화면에는 붙이지 않음).
   if (event && event.id !== undefined && event.id !== null) root.setAttribute('data-student-action-event', String(event.id));
-  if (receipt && receipt.requestId) root.setAttribute('data-student-action-request', String(receipt.requestId));
+  if (receipt && receipt.requestId && receiptBound) root.setAttribute('data-student-action-request', String(receipt.requestId));
   return root;
 };
 
@@ -782,10 +802,11 @@ const renderVulnerabilities = (input = {}) => {
   }
   if (status === 'error') {
     const err = input.error || {};
-    const p = el('p', `패키지 조회 실패: ${err.message || '오류 정보가 없습니다.'}${err.code ? ` (${err.code})` : ''}`);
+    const cancelled = err.code === 'CANCELLED' || err.code === 'REQUEST_CANCELLED';
+    const p = el('p', `${cancelled ? '패키지 조회 취소' : '패키지 조회 실패'}: ${err.message || '오류 정보가 없습니다.'}${err.code ? ` (${err.code})` : ''}`);
     p.setAttribute('data-student-error', 'true');
     root.append(p);
-    root.append(el('p', '조회 실패는 「취약점 없음」이 아닙니다. 이전 결과를 현재 결과로 표시하지 않습니다.'));
+    root.append(el('p', '조회 실패·취소는 「취약점 없음」이 아닙니다. 이전 결과를 현재 결과로 표시하지 않습니다.'));
     return root;
   }
   if (status !== 'ok') {
@@ -801,6 +822,10 @@ const renderVulnerabilities = (input = {}) => {
   metaRow('lock 파일 버전', data.lockfileVersion !== undefined && data.lockfileVersion !== null ? String(data.lockfileVersion) : '확인 불가');
   metaRow('lock 파일 해시', data.lockfileHash || '확인 불가');
   metaRow('조회 시각', data.checkedAt || '확인 불가');
+  if (data.code !== undefined && data.code !== null) metaRow('조회 코드', String(data.code));
+  if (data.excluded && Number.isSafeInteger(data.excluded.count)) {
+    metaRow('조회 제외', `${data.excluded.count}건(승인 목록 밖·미지원·잘못된 항목은 조회하지 않았습니다)`);
+  }
   root.append(meta);
 
   const packages = Array.isArray(data.packages) ? data.packages : [];
@@ -818,8 +843,12 @@ const renderVulnerabilities = (input = {}) => {
     li.setAttribute('data-student-package-name', name);
     li.setAttribute('data-student-package-version', version);
     const findings = Array.isArray(pkg && pkg.vulnerabilities) ? pkg.vulnerabilities : [];
+    // 제공 검증과 같은 조건: none_found 는 취약점이 비어 있어야 하고 known_vulnerabilities 는 하나 이상 있어야 합니다.
+    const rowMismatch = pkg && ((pkg.status === 'none_found' && findings.length > 0)
+      || (pkg.status === 'known_vulnerabilities' && findings.length === 0));
     let statusText = pkg && Object.hasOwn(PACKAGE_STATUS_LABEL, pkg.status) ? PACKAGE_STATUS_LABEL[pkg.status] : `확인 불가(${pkg && pkg.status || 'unknown'})`;
-    if (pkg && pkg.status === 'unverifiable' && findings.length) statusText = '일부 확인 · 전체 조회 확인 불가(unverifiable)';
+    if (rowMismatch) statusText = `조회 결과 불일치(확인 불가 · 받은 값: ${pkg.status})`;
+    else if (pkg && pkg.status === 'unverifiable' && findings.length) statusText = '일부 확인 · 전체 조회 확인 불가(unverifiable)';
     li.append(el('p', `${name}@${version} · ${statusText} · 출처 ${pkg && pkg.source || '확인 불가'} · 조회 시각 ${pkg && pkg.checkedAt || '확인 불가'}`));
     if (findings.length) {
       const findingList = el('ul');
@@ -831,6 +860,14 @@ const renderVulnerabilities = (input = {}) => {
     list.append(li);
   }
   root.append(list);
+  // 제공 검증과 같은 조건: complete 는 확인 불가 행이 없어야 하고 partial 은 확인 불가 행이 하나 이상 있어야 합니다.
+  const unverifiableRows = packages.filter(p => p && p.status === 'unverifiable').length;
+  if ((scanStatus === 'complete' && unverifiableRows > 0)
+    || (scanStatus === 'partial' && unverifiableRows === 0)) {
+    const p = el('p', '전체 조회 상태와 패키지 결과가 맞지 않습니다(확인 불가). 결과를 정상으로 보지 않습니다.');
+    p.setAttribute('data-student-error', 'true');
+    root.append(p);
+  }
   return root;
 };
 
