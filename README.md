@@ -16,7 +16,7 @@ npm start            # 연결 확인 모드 (원천 엔진 없으면 disconnecte
 
 ## 구성
 
-- 학생 구현: `on-client/student/extension.mjs`의 `renderIdentity`~`renderAction`
+- 학생 구현: `on-client/student/extension.mjs`의 `renderIdentity`~`renderVulnerabilities`(8개 표시 함수)
 - 제공 코드: `public/`(화면), `src/`(서버·AI·조치·취약점), `vendor/`(CLCO 전송), `tools/`(호스트 준비)
 - 학생 문서: `on-client/docs/STUDENT_MANUAL.md`(설명서·구성도), `on-client/docs/NEW_ENV_RUN.md`(새 환경 실행 기록)
 

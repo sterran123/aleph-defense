@@ -18,22 +18,40 @@ npm start            # 연결 확인 모드 → 원천 엔진이 없으면 disco
 
 ## 2. 구성도
 
+네 개의 주 상자는 브라우저 · 앱 서버 · 기존 접속·XDR 서버 · CLCO 수업용 AI입니다. 앱 서버(`src/server.mjs`)가 각 외부 연결을 직접 부릅니다. AI·조치·취약점·네이티브 호스트 연결은 모두 앱 서버에서 갈라지는 별도 경로이며, 원천 엔진을 거치지 않습니다.
+
 ```
-[브라우저 화면]                public/index.html · public/app.js        http://127.0.0.1:5189 (ON_PORT)
-      |  /api/* GET·POST (같은 출처)
+[브라우저 화면]                 public/index.html · public/app.js         http://127.0.0.1:5189 (ON_PORT)   [확인됨: demo 부팅·응답 확인]
+      |  /api/* GET·POST (같은 출처, student/extension.mjs가 화면을 채움)
       v
-[앱 서버]                    src/server.mjs                          node src/server.mjs
-      |  엔진 메서드 호출(readIdentity·readEvents·decideAccess…)
-      v
-[기존 접속·XDR 서버(원천)]     student/engine-adapter.mjs (ON_ENGINE_ADAPTER)
-                              또는 src/engine/sdp-host.mjs (--sdp-host-config, 개인 SDP 호스트)
-      |  사건 설명·연결 점검 시
-      v
-[CLCO 수업용 AI]              src/ai/service.mjs → vendor/clco-http.mjs
-                              → ON_AI_BASE_URL 의 /v1/models·/v1/chat/completions (Bearer 토큰)
+[앱 서버]                      src/server.mjs                            node src/server.mjs              [확인됨: demo·연결 확인 모드 부팅 확인]
+      |--(1) 엔진 메서드 호출(src/engine.mjs 의 engineMethod): readIdentity·readEvents·decideAccess…
+      |        v
+      |     [기존 접속·XDR 서버(원천)]   student/engine-adapter.mjs (ON_ENGINE_ADAPTER 로 지정)          [확인 안 됨: 실제 원천 연결은 UNV]
+      |                                또는 src/engine/sdp-host.mjs (--sdp-host-config 개인 SDP 호스트)
+      |                                demo 모드는 src/engine.mjs 의 demoEngine() 예제 자료
+      |
+      |--(2) AI 연결 점검·사건 설명(POST /api/ai/check·/api/ai/explain)
+      |        v
+      |     [CLCO 수업용 AI]            src/ai/service.mjs → vendor/clco-http.mjs                          [확인 안 됨: ON_AI_PROVISIONING_PENDING 응답까지만 확인, 실제 호출 UNV]
+      |                                → ON_AI_BASE_URL 의 /v1/models·/v1/chat/completions (Bearer 토큰은 비밀 입력란에 보관)
+      |
+      |--(3) 조치 요청 상태·원천 결과(POST /api/actions/prepare·execute·result)
+      |        v
+      |     [조치 원천 연결]            src/actions/service.mjs → src/actions/sdp-action-engine.mjs        [확인 안 됨: 실제 집행 UNV]
+      |                                --alekov-actions + --alekov-actions-config + --native-host-config + --sdp-host-config 모두 필요(하나라도 빠지면 시작 거절)
+      |
+      |--(4) 설치 패키지 취약점 조회(GET /api/vulnerabilities)
+      |        v
+      |     [OSV 공개 조회]             src/vulnerabilities/project-scan.mjs → src/vulnerabilities/osv.mjs [확인 안 됨: not_configured 응답까지 확인, 실제 조회 UNV]
+      |                                → https://api.osv.dev/v1/querybatch (허용 공개 패키지 목록이 비어 있으면 조회하지 않음)
+      |
+      `--(5) 네이티브 호스트 로그인·자격 증명(--native-host-config)
+               v
+            [네이티브 호스트]          src/connection/native-context.mjs · src/connection/native-login.mjs [확인 안 됨: tools/*.ps1 준비 필요, UNV]
 ```
 
-- 취약점 조회는 앱 서버가 `src/vulnerabilities/` 로 `https://api.osv.dev/v1/querybatch` 에만 나갑니다(허용 공개 패키지 목록이 비어 있으면 조회하지 않습니다).
+- 화면 안내 문구(도움정보)는 `src/learner-support/service.mjs`가 앱 서버 안에서 만듭니다. 외부로 나가지 않습니다.
 
 ## 3. 제공 코드와 학생 구현 구분
 
@@ -69,6 +87,19 @@ npm start            # 연결 확인 모드 → 원천 엔진이 없으면 disco
 
 ## 5. 지원 범위
 
-- **실제로 확인한 것**: 새 폴더에서 `npm run demo`·`npm start` 부팅, 화면 파일(`/`, `/app.js`, `/student/extension.mjs`) 응답, 데모 자료의 `/api/me`·`/api/apps`·`/api/devices`·`/api/sessions`·`/api/events`·`/api/vulnerabilities` 응답, 학생 표시 함수의 DOM 출력(가상 입력), 오류 구분 표시.
-- **기다림(UNV)**: 실제 계정의 AI 연결 점검·사건 설명 호출(권한 준비 필요), 실제 원천 조치 집행과 효과 확인, 허용 패키지의 OSV 실조회, 네이티브 호스트 로그인·자격 증명 보관함, SDP 호스트 설정 연결.
-- 데모(예제 자료) 결과와 연결 없음은 실제 연결 확인으로 적지 않습니다.
+확인한 것과 기다림(UNV)을 나눠 적습니다. 구성도의 상자별 확인 상태(§2의 `[확인됨]`·`[확인 안 됨]` 표시)와 같은 범위입니다.
+
+| 범위 | 확인한 것 | 확인 방법 | 상태 |
+|---|---|---|---|
+| 브라우저 화면·앱 서버 | 새 폴더에서 `npm run demo`·`npm start` 부팅, `/`·`/app.js`·`/student/extension.mjs` 200 응답 | NEW_ENV_RUN.md 절차 재실행 | 확인됨 |
+| 데모 자료 API | `/api/me`·`/api/apps`·`/api/devices`·`/api/sessions`·`/api/events`·`/api/vulnerabilities` 예제 응답 | demo 모드 GET | 확인됨(예제 자료) |
+| 학생 표시 함수 8개 | `renderIdentity`~`renderVulnerabilities` DOM 출력과 오류 구분 | 가상 입력으로 직접 호출 | 확인됨(가상 입력) |
+| 요청 거절 | `QUERY_REJECTED`·`ORIGIN_REJECTED` 응답 | 쿼리 문자열·다른 출처 요청 | 확인됨 |
+| AI 연결 점검·사건 설명 | 코드 경로·`ON_AI_PROVISIONING_PENDING` 응답만 확인. 실제 계정 권한·모델 응답은 못 봄 | `POST /api/ai/check`·`/api/ai/explain` | 기다림(UNV) |
+| 기존 접속·XDR 서버 | `engine-adapter.mjs` 뼈대·`ENGINE_NOT_CONNECTED` 응답만 확인. 실제 원천 전달은 못 봄 | `npm start` 부팅 | 기다림(UNV) |
+| 조치 원천 집행 | `--alekov-actions` 미구성 상태의 거절 응답만 확인. 실제 집행·효과는 못 봄 | demo·연결 확인 모드 | 기다림(UNV) |
+| OSV 실조회 | `not_configured` 응답만 확인. 허용 패키지 실조회는 못 봄 | `GET /api/vulnerabilities` | 기다림(UNV) |
+| 네이티브 호스트 | `tools/*.ps1` 운영자 준비 필요. 로그인·보관함 동작은 못 봄 | 미확인 | 기다림(UNV) |
+
+- 데모(예제 자료) 결과와 연결 없음은 실제 연결 확인으로 적지 않습니다. 확인하지 않은 인증·조치 실행·OSV 결과를 지원하는 것처럼 쓰지 않습니다.
+- 열쇠·토큰·비밀번호 같은 비밀값은 문서·코드·커밋에 넣지 않습니다. 필요하면 학생이 공식 설정 화면의 비밀 입력란에 직접 넣습니다.
