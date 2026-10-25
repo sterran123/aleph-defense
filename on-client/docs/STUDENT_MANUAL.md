@@ -18,7 +18,7 @@ npm start            # 연결 확인 모드 → 원천 엔진이 없으면 disco
 
 ## 2. 구성도
 
-네 개의 주 상자는 브라우저 · 앱 서버 · 기존 접속·XDR 서버 · CLCO 수업용 AI입니다. 앱 서버(`src/server.mjs`)가 각 외부 연결을 직접 부릅니다. AI·조치·취약점·네이티브 호스트 연결은 모두 앱 서버에서 갈라지는 별도 경로이며, 원천 엔진을 거치지 않습니다.
+네 개의 주 상자는 브라우저 · 앱 서버 · 기존 접속·XDR 서버 · CLCO 수업용 AI입니다. 앱 서버(`src/server.mjs`)가 각 외부 연결을 직접 부릅니다. AI 연결 점검은 앱 서버가 AI 서비스를 바로 부르지만, 실제 사건 설명(`/api/ai/explain`)은 요청 처리 중에 원천 쪽을 함께 거칩니다 — 아래 (2)를 보세요.
 
 ```
 [브라우저 화면]                 public/index.html · public/app.js         http://127.0.0.1:5189 (ON_PORT)   [확인됨: demo 부팅·응답 확인]
@@ -32,15 +32,21 @@ npm start            # 연결 확인 모드 → 원천 엔진이 없으면 disco
       |                                demo 모드는 src/engine.mjs 의 demoEngine() 예제 자료
       |
       |--(2) AI 연결 점검·사건 설명(POST /api/ai/check·/api/ai/explain)
-      |        |  두 경로로 나뉨:
-      |        |  a) 직접 설정: src/ai/service.mjs → vendor/clco-http.mjs
-      |        |  b) 네이티브 연결 시: native host 작업(src/connection/native-context.mjs)에서
-      |        |     자격 증명 보관함(src/ai/credential-vault.mjs, tools/app-credentials.ps1 호출,
-      |        |     열쇠는 작업 안에만 존재·env에 두지 않음)과 앱 권한·주소 검증(src/ai/app-authorization.mjs)을 거쳐
-      |        |     src/ai/vault-service.mjs → vendor/clco-http.mjs
+      |        |  연결 점검(check): 네이티브 연결 시 native 신원·보관함 자격을 거쳐 vault-service가,
+      |        |    아니면 src/ai/service.mjs 가 → vendor/clco-http.mjs — AI 응답 가능 여부만 봄(사건 원천 조회 없음)
+      |        |  사건 설명(explain, 네이티브 연결 시):
+      |        |    src/server.mjs 가 native host 작업(src/connection/native-context.mjs)을 열어 현재 신원을 읽고,
+      |        |    SDP 호스트(src/engine/sdp-host.mjs)에 openSdpIncidentOperation·readSdpIncidentOperation 으로
+      |        |    사건 원천 기록(근거·규칙·상태)을 조회하고 신원을 대조한 뒤,
+      |        |    자격 증명 보관함(src/ai/credential-vault.mjs — tools/app-credentials.ps1 호출,
+      |        |    열쇠는 작업 안에만 존재·코드·env에 두지 않음)에서 자격을 꺼내
+      |        |    src/ai/vault-service.mjs(앱 권한·주소 검증: src/ai/app-authorization.mjs) → vendor/clco-http.mjs 로 보냄.
+      |        |    AI 응답은 돌아올 때 SDP 사건과 다시 대조(assertExplanation)한 뒤에만 화면에 전달됨.
+      |        |  사건 설명(explain, 네이티브 없을 때): 엔진 readIdentity 로 본인·프로젝트를 확인한 뒤
+      |        |    src/ai/service.mjs → vendor/clco-http.mjs
       |        v
       |     [CLCO 수업용 AI]            ON_AI_BASE_URL 의 /v1/models·/v1/chat/completions                    [확인 안 됨: ON_AI_PROVISIONING_PENDING 응답까지만 확인, 실제 호출 UNV]
-      |                                (Bearer 토큰은 비밀 보관함·비밀 입력란에 보관)
+      |                                (자격 증명은 네이티브 보관함에 보관. 비밀값은 코드·문서·환경 변수 파일에 적지 않음)
       |
       |--(3) 조치 요청 상태·원천 결과(POST /api/actions/prepare·execute·result)
       |        v
