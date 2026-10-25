@@ -32,9 +32,15 @@ npm start            # 연결 확인 모드 → 원천 엔진이 없으면 disco
       |                                demo 모드는 src/engine.mjs 의 demoEngine() 예제 자료
       |
       |--(2) AI 연결 점검·사건 설명(POST /api/ai/check·/api/ai/explain)
+      |        |  두 경로로 나뉨:
+      |        |  a) 직접 설정: src/ai/service.mjs → vendor/clco-http.mjs
+      |        |  b) 네이티브 연결 시: native host 작업(src/connection/native-context.mjs)에서
+      |        |     자격 증명 보관함(src/ai/credential-vault.mjs, tools/app-credentials.ps1 호출,
+      |        |     열쇠는 작업 안에만 존재·env에 두지 않음)과 앱 권한·주소 검증(src/ai/app-authorization.mjs)을 거쳐
+      |        |     src/ai/vault-service.mjs → vendor/clco-http.mjs
       |        v
-      |     [CLCO 수업용 AI]            src/ai/service.mjs → vendor/clco-http.mjs                          [확인 안 됨: ON_AI_PROVISIONING_PENDING 응답까지만 확인, 실제 호출 UNV]
-      |                                → ON_AI_BASE_URL 의 /v1/models·/v1/chat/completions (Bearer 토큰은 비밀 입력란에 보관)
+      |     [CLCO 수업용 AI]            ON_AI_BASE_URL 의 /v1/models·/v1/chat/completions                    [확인 안 됨: ON_AI_PROVISIONING_PENDING 응답까지만 확인, 실제 호출 UNV]
+      |                                (Bearer 토큰은 비밀 보관함·비밀 입력란에 보관)
       |
       |--(3) 조치 요청 상태·원천 결과(POST /api/actions/prepare·execute·result)
       |        v
