@@ -31,6 +31,7 @@
         <button type="button" role="tab" id="tab-protection" data-testid="nav-protection" data-view="protection" aria-controls="view-protection" aria-selected="true" tabindex="0">보호 현황</button>
         <button type="button" role="tab" id="tab-apps" data-testid="nav-apps" data-view="apps" aria-controls="view-apps" aria-selected="false" tabindex="-1">업무 앱</button>
         <button type="button" role="tab" id="tab-records" data-testid="nav-records" data-view="records" aria-controls="view-records" aria-selected="false" tabindex="-1">보안 기록</button>
+        <button type="button" role="tab" id="tab-pc" data-testid="nav-pc" data-view="pc" aria-controls="view-pc" aria-selected="false" tabindex="-1">내 PC</button>
       </div>
       <p class="sidebar-note">메뉴는 위·아래 방향키로 이동할 수 있습니다.</p>
     </nav>
@@ -226,6 +227,39 @@
           <h2 id="student-action-title">학생 조치 상태 표시 <span class="tag tag-student">student/extension.mjs · renderAction</span></h2>
           <div id="student-action" class="student-slot" aria-live="polite"></div>
         </section>
+      </section>
+      <section id="view-pc" class="view" role="tabpanel" aria-labelledby="tab-pc" hidden>
+        <h1>내 PC</h1>
+        <p class="notice">
+          이 화면은 이 PC의 상태를 <strong>읽기만</strong> 합니다. 방화벽·이벤트·네트워크 설정은 바꾸지 않습니다.
+          읽기가 실패한 부분은 가짜 값 없이 확인 불가로 표시합니다.
+        </p>
+        <div class="row pc-toolbar">
+          <button type="button" id="pc-refresh" class="btn">다시 조회</button>
+          <span id="pc-checked-at" class="checked-at"></span>
+        </div>
+
+        <div class="grid-2">
+          <section class="card local" aria-labelledby="pc-system-title">
+            <h2 id="pc-system-title">시스템 상태 <span class="tag tag-local">이 PC 실측</span></h2>
+            <div id="pc-system" aria-live="polite"></div>
+          </section>
+          <section class="card local" aria-labelledby="pc-network-title">
+            <h2 id="pc-network-title">연결 상태 <span class="tag tag-local">이 PC 실측</span></h2>
+            <div id="pc-network" aria-live="polite"></div>
+          </section>
+        </div>
+
+        <div class="grid-2">
+          <section class="card local" aria-labelledby="pc-firewall-title">
+            <h2 id="pc-firewall-title">방화벽 <span class="tag tag-local">읽기 전용</span></h2>
+            <div id="pc-firewall" aria-live="polite"></div>
+          </section>
+          <section class="card local" aria-labelledby="pc-events-title">
+            <h2 id="pc-events-title">최근 시스템 이벤트 <span class="tag tag-local">읽기 전용</span></h2>
+            <div id="pc-events" aria-live="polite"></div>
+          </section>
+        </div>
       </section>
     </main>
   </div>

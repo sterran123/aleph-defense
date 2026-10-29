@@ -18,6 +18,8 @@
   --unknown-soft: #eceff3;
   --student: #6b3fb3;
   --student-soft: #f3edfb;
+  --local: #0e7c66;
+  --local-soft: #e0f2ef;
   --radius: 8px;
   --focus: 0 0 0 3px #f5b400;
   font-family: system-ui, -apple-system, "Segoe UI", "Malgun Gothic", "Apple SD Gothic Neo", sans-serif;
@@ -104,6 +106,7 @@ main:focus { outline: none; }
 }
 .grid-2 > .card { margin-bottom: 0; }
 .card.student { border-left: 4px solid var(--student); }
+.card.local { border-left: 4px solid var(--local); }
 
 .tag {
   display: inline-block; padding: 1px 8px; border-radius: 999px; font-size: 0.75rem; font-weight: 500;
@@ -111,6 +114,28 @@ main:focus { outline: none; }
 }
 .tag-student { background: var(--student-soft); color: var(--student); }
 .tag-demo { background: var(--challenge-soft); color: var(--challenge); }
+.tag-local { background: var(--local-soft); color: var(--local); }
+
+/* 내 PC(수호령 마무리) */
+.pc-toolbar { align-items: center; margin-bottom: 16px; }
+.pc-toolbar .checked-at { margin-left: 4px; }
+.meter-row { margin-bottom: 14px; }
+.meter-head { display: flex; justify-content: space-between; gap: 12px; font-size: 0.9rem; margin-bottom: 4px; }
+.meter-head strong { font-weight: 600; }
+.meter { height: 8px; background: var(--unknown-soft); border-radius: 999px; overflow: hidden; }
+.meter-fill { height: 100%; background: var(--local); border-radius: 999px; }
+.fw-state { padding: 1px 10px; border-radius: 999px; font-size: 0.8rem; font-weight: 600; }
+.fw-state.fw-on { background: var(--allow-soft); color: var(--allow); }
+.fw-state.fw-off { background: var(--deny-soft); color: var(--deny); }
+.pc-events { list-style: none; margin: 10px 0 0; padding: 0; display: grid; gap: 10px; }
+.pc-event { border: 1px solid var(--border); border-radius: var(--radius); padding: 10px 12px; }
+.pc-event-head { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; font-size: 0.8rem; }
+.pc-level { padding: 1px 8px; border-radius: 999px; font-size: 0.75rem; font-weight: 600; }
+.pc-level-critical, .pc-level-error { background: var(--deny-soft); color: var(--deny); }
+.pc-level-warning { background: var(--challenge-soft); color: var(--challenge); }
+.pc-level-information { background: var(--accent-soft); color: var(--accent); }
+.pc-event-msg { margin: 4px 0 0; font-size: 0.85rem; color: var(--muted); overflow-wrap: anywhere; }
+.pc-event .item-title { margin: 4px 0 0; font-size: 0.9rem; }
 
 .muted { color: var(--muted); font-size: 0.875rem; }
 .row { display: flex; gap: 8px; flex-wrap: wrap; }

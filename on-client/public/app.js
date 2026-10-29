@@ -43,6 +43,7 @@ const RESOURCE_LABELS = {
   access: '접속 판정',
   diagnostics: '도움정보',
   vulnerabilities: '설치 패키지 조회',
+  pc: '내 PC 상태',
 };
 
 const state = {
@@ -56,6 +57,7 @@ const state = {
   access: { status: 'idle' },
   diagnostics: { status: 'idle' },
   vulnerabilities: { status: 'idle' },
+  pc: { status: 'idle' },
   aiConnection: { status: 'idle' },
   selectedExplanation: { event: null, resource: { status: 'idle' } },
   errors: new Map(),
@@ -67,6 +69,8 @@ let refreshController = null;
 let accessController = null;
 let vulnerabilitiesController = null;
 let vulnerabilitiesGeneration = 0;
+let pcController = null;
+let pcGeneration = 0;
 let vulnerabilitiesView = null;
 const explainControllers = new Map();
 
@@ -117,6 +121,26 @@ const VALIDATORS = {
     && Array.isArray(row.rules) && row.rules.every(isTextRow)
     && isRecord(row.state) && isAccessState(row.state.access) && isSessionStatus(row.state.session) && isDeviceStatus(row.state.device)
     && Array.isArray(row.supportedActions) && row.supportedActions.every(isId)),
+  // 수호령 마무리: /api/local/status 의 부분 계약. 한 부분이 어긋나면 목록 전체를 확인 불가로 둔다.
+  pc: (d) => {
+    const pcError = (p) => isRecord(p) && p.ok === false && isRecord(p.error) && isText(p.error.code) && isText(p.error.message);
+    const part = (p, check) => (isRecord(p) && p.ok === true && check(p)) || (isRecord(p) && p.ok === false);
+    const section = (s, check) => (isRecord(s) && s.ok === true && check(s)) || pcError(s);
+    const pct = (v) => typeof v === 'number' && Number.isFinite(v) && v >= 0 && v <= 100;
+    const bytes = (v) => Number.isSafeInteger(v) && v >= 0;
+    return isRecord(d) && isRecord(d.system)
+      && part(d.system.cpu, (c) => pct(c.usagePercent) && Number.isSafeInteger(c.cores) && c.cores >= 1 && isText(c.model))
+      && part(d.system.memory, (m) => bytes(m.totalBytes) && m.totalBytes > 0 && bytes(m.usedBytes) && m.usedBytes <= m.totalBytes && pct(m.usagePercent))
+      && part(d.system.disk, (k) => isText(k.root) && bytes(k.totalBytes) && k.totalBytes > 0 && bytes(k.usedBytes) && k.usedBytes <= k.totalBytes && pct(k.usagePercent))
+      && section(d.network, (n) => ['likely', 'unreachable', 'unknown'].includes(n.internet)
+        && Array.isArray(n.interfaces) && n.interfaces.length <= 8
+        && n.interfaces.every((row) => isRecord(row) && isText(row.name) && row.family === 'IPv4' && isText(row.address)))
+      && section(d.firewall, (f) => Array.isArray(f.profiles) && f.profiles.length >= 1 && f.profiles.length <= 6
+        && f.profiles.every((p) => isRecord(p) && ['domain', 'private', 'public'].includes(p.name) && ['on', 'off'].includes(p.state)))
+      && section(d.events, (e) => isText(e.source) && Array.isArray(e.items) && e.items.length <= 12
+        && e.items.every((row) => isRecord(row) && isTime(row.at) && Number.isSafeInteger(row.id)
+          && ['critical', 'error', 'warning', 'information'].includes(row.level) && isText(row.provider) && isText(row.message)));
+  },
 };
 
 const decisionValidator = (appId) => (d) => isRecord(d) && d.appId === appId
@@ -1259,6 +1283,113 @@ async function loadStudentModule() {
   renderAllStudent();
 }
 
+// ---------- 내 PC(수호령 마무리) ----------
+
+const GB = 1073741824;
+const gb = (bytes) => `${(bytes / GB).toFixed(1)}GB`;
+const PC_PROFILE_LABELS = { domain: '도메인', private: '개인', public: '공용' };
+const PC_LEVEL_LABELS = { critical: '심각', error: '오류', warning: '경고', information: '정보' };
+const PC_INTERNET_LABELS = { likely: '있을 가능성 높음(DNS 확인됨)', unreachable: '연결 안 됨(DNS 실패)', unknown: '확인 불가' };
+
+function meterRow(label, valueText, pct) {
+  const fill = Math.min(100, Math.max(0, pct));
+  return el('div', { className: 'meter-row' }, [
+    el('div', { className: 'meter-head' }, [el('span', { text: label }), el('strong', { text: `${valueText} · ${pct}%` })]),
+    el('div', {
+      className: 'meter', role: 'meter', 'aria-label': label,
+      'aria-valuemin': '0', 'aria-valuemax': '100', 'aria-valuenow': String(pct),
+    }, [el('div', { className: 'meter-fill', style: `width:${fill}%` })]),
+  ]);
+}
+
+const pcSectionError = (section) => stateBox('error', `${section.error.code}: ${section.error.message}`);
+
+function renderPcSystem(target, s) {
+  const rows = [];
+  if (s.cpu.ok) {
+    rows.push(meterRow('CPU', `${s.cpu.cores}코어`, s.cpu.usagePercent));
+    rows.push(el('p', { className: 'muted', text: `모델: ${s.cpu.model}` }));
+  } else rows.push(stateBox('error', 'CPU: 확인 불가'));
+  if (s.memory.ok) rows.push(meterRow('메모리', `${gb(s.memory.usedBytes)} / ${gb(s.memory.totalBytes)}`, s.memory.usagePercent));
+  else rows.push(stateBox('error', '메모리: 확인 불가'));
+  if (s.disk.ok) rows.push(meterRow(`디스크 ${s.disk.root}`, `${gb(s.disk.usedBytes)} / ${gb(s.disk.totalBytes)} · 여유 ${gb(s.disk.availableBytes)}`, s.disk.usagePercent));
+  else rows.push(stateBox('error', '디스크: 확인 불가'));
+  setChildren(target, ...rows);
+}
+
+function renderPcNetwork(target, n) {
+  if (!n.ok) { setChildren(target, pcSectionError(n)); return; }
+  const items = n.interfaces.length
+    ? n.interfaces.map((row) => el('li', {}, [el('span', { className: 'item-title', text: `${row.name} (${row.family})` }), el('span', { text: row.address })]))
+    : [el('li', {}, [el('span', { text: '활성 인터넷 인터페이스가 없습니다.' })])];
+  setChildren(target,
+    el('dl', { className: 'kv' }, [el('dt', { text: '인터넷' }), el('dd', { text: PC_INTERNET_LABELS[n.internet] })]),
+    el('ul', { className: 'plain-list' }, items));
+}
+
+function renderPcFirewall(target, f) {
+  if (!f.ok) { setChildren(target, pcSectionError(f)); return; }
+  setChildren(target, el('ul', { className: 'plain-list' },
+    f.profiles.map((p) => el('li', {}, [
+      el('span', { className: 'item-title', text: `${PC_PROFILE_LABELS[p.name]} 프로필` }),
+      el('span', { className: `fw-state fw-${p.state}`, text: p.state === 'on' ? '켜짐' : '꺼짐' }),
+    ]))));
+}
+
+function renderPcEvents(target, e) {
+  if (!e.ok) { setChildren(target, pcSectionError(e)); return; }
+  if (e.items.length === 0) { setChildren(target, stateBox('empty', `${e.source} 로그에 최근 오류·경고 이벤트가 없습니다.`)); return; }
+  setChildren(target,
+    el('p', { className: 'muted', text: `${e.source} 로그 · 심각/오류/경고 최근 ${e.items.length}건` }),
+    el('ul', { className: 'pc-events' }, e.items.map((row) => el('li', { className: 'pc-event' }, [
+      el('div', { className: 'pc-event-head' }, [
+        el('span', { className: `pc-level pc-level-${row.level}`, text: PC_LEVEL_LABELS[row.level] }),
+        el('span', { className: 'muted', text: formatTime(row.at) }),
+        el('span', { className: 'muted', text: `ID ${row.id}` }),
+      ]),
+      el('p', { className: 'item-title', text: row.provider }),
+      el('p', { className: 'pc-event-msg', text: row.message }),
+    ]))));
+}
+
+function renderPc() {
+  const resource = state.pc;
+  $('pc-refresh').disabled = resource.status === 'loading';
+  $('pc-checked-at').textContent = resource.status === 'ok' && resource.meta.checkedAt ? `조회 시각 ${formatTime(resource.meta.checkedAt)}` : '';
+  const targets = [$('pc-system'), $('pc-network'), $('pc-firewall'), $('pc-events')];
+  if (resource.status === 'idle') {
+    for (const target of targets) setChildren(target, stateBox('empty', '아직 조회하지 않았습니다. 「다시 조회」를 누르면 이 PC 상태를 읽습니다.'));
+    return;
+  }
+  if (resource.status === 'loading') {
+    for (const target of targets) setChildren(target, loadingBox());
+    return;
+  }
+  if (resource.status === 'error') {
+    for (const target of targets) setChildren(target, stateBox('error', `${resource.error.code}: ${resource.error.message}`));
+    return;
+  }
+  renderPcSystem($('pc-system'), resource.data.system);
+  renderPcNetwork($('pc-network'), resource.data.network);
+  renderPcFirewall($('pc-firewall'), resource.data.firewall);
+  renderPcEvents($('pc-events'), resource.data.events);
+}
+
+async function loadPc() {
+  const gen = ++pcGeneration;
+  if (pcController) pcController.abort();
+  const controller = new AbortController();
+  pcController = controller;
+  state.pc = { status: 'loading' };
+  trackError('pc', state.pc);
+  renderPc();
+  const result = await request('/api/local/status', { signal: controller.signal });
+  if (gen !== pcGeneration) return;
+  state.pc = toResource(result, VALIDATORS.pc);
+  trackError('pc', state.pc);
+  renderPc();
+}
+
 // ---------- 로드 ----------
 
 const RENDERERS = {
@@ -1305,6 +1436,7 @@ async function loadAll() {
   refreshController = controller;
   cancelInteractive();
   clearVulnerabilities();
+  void loadPc();
 
   const refresh = $('refresh');
   refresh.disabled = true;
@@ -1352,6 +1484,7 @@ function init() {
   $('native-login-redeem').addEventListener('click', () => { if (nativeLogin) nativeLogin.redeem(); });
   $('native-login-check').addEventListener('click', () => { if (nativeLogin) nativeLogin.check(); });
   $('native-login-cancel').addEventListener('click', () => { if (nativeLogin) nativeLogin.cancel(); });
+  $('pc-refresh').addEventListener('click', () => loadPc());
   // 페이지를 떠날 때는 화면 진행과 이 화면의 요청만 끝낸다. 원격 취소를 보내거나 성공이라고 주장하지 않는다.
   window.addEventListener('pagehide', () => { if (nativeLogin) nativeLogin.reset(); });
   guardStaticArt();
@@ -1360,6 +1493,7 @@ function init() {
   loadConnectModule();
   renderAiConnection();
   renderVulnerabilities();
+  renderPc();
   renderAllStudent();
   loadStudentModule();
   loadAll();

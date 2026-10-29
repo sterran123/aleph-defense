@@ -16,6 +16,7 @@ import {prepareLearnerSupportRequest} from './ai/learner-support-contract.mjs';
 import {createVaultOnAiService} from './ai/vault-service.mjs';
 import {createConnectionManager} from './connection/manager.mjs';
 import {createProjectScanner} from './vulnerabilities/project-scan.mjs';
+import {readLocalStatus} from './local/status.mjs';
 import {buildLocalLearnerSupportGuide,isLearnerSupportProblemKind,readLocalLearnerSupportObservation} from './learner-support/service.mjs';
 import {nativeOwn,nativePublicError} from './connection/native-login.mjs';
 import {createNativeHostContext,captureNativeHostConfiguration,readNativeHostConfiguration,openNativeHostOperation,readNativeHostOperation,assertNativeHostOperation,createNativeOperationVault,closeNativeHostOperation} from './connection/native-context.mjs';
@@ -689,6 +690,11 @@ export function createOnServer(serverOptions={}) {
       }
       if(req.method==='GET'&&url.pathname==='/api/vulnerabilities'){
         const data=await bounded(signal=>scanner.scan({signal}));send(200,{ok:true,data});
+        return;
+      }
+      // 수호령 마무리: 이 PC 실측(읽기 전용). 부분별 ok 를 내려보내고 가짜 값을 만들지 않는다.
+      if(req.method==='GET'&&url.pathname==='/api/local/status'){
+        const data=await bounded(signal=>readLocalStatus({signal}));send(200,{ok:true,data});
         return;
       }
       send(404,{ok:false,error:{code:'NOT_FOUND',message:'지원하지 않는 주소입니다.',retryable:false}});
