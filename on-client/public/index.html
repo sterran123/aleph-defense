@@ -7,6 +7,7 @@
   <meta name="referrer" content="no-referrer">
   <title>케셰브 · ZTNA &amp; XDR</title>
   <link rel="stylesheet" href="/style.css">
+  <link rel="stylesheet" href="/student/appearance.css">
   <script type="module" src="/app.js"></script>
 </head>
 <body>
@@ -14,9 +15,9 @@
 
   <header class="topbar">
     <div class="brand">
-      <img class="alekov-art brand-icon" src="/assets/alekov/alekov-app-icon.webp" alt="" aria-hidden="true" width="32" height="32" draggable="false">
+      <img id="brand-icon" class="alekov-art brand-icon" src="/assets/alekov/alekov-app-icon.webp" alt="" aria-hidden="true" width="32" height="32" draggable="false">
       <span class="brand-mark" id="brand-mark-fallback" aria-hidden="true" hidden>A</span>
-      <span class="brand-name">케셰브 <small>ZTNA &amp; XDR 보안 Agent</small></span>
+      <span class="brand-name"><span id="brand-title">케셰브</span> <small>ZTNA &amp; XDR 보안 Agent</small></span>
     </div>
     <div class="topbar-status">
       <span id="mode-badge" class="mode-badge" data-mode="loading" role="status" aria-live="polite">상태 확인 중</span>
@@ -31,13 +32,14 @@
         <button type="button" role="tab" id="tab-protection" data-testid="nav-protection" data-view="protection" aria-controls="view-protection" aria-selected="true" tabindex="0">보호 현황</button>
         <button type="button" role="tab" id="tab-apps" data-testid="nav-apps" data-view="apps" aria-controls="view-apps" aria-selected="false" tabindex="-1">업무 앱</button>
         <button type="button" role="tab" id="tab-records" data-testid="nav-records" data-view="records" aria-controls="view-records" aria-selected="false" tabindex="-1">보안 기록</button>
-        <button type="button" role="tab" id="tab-pc" data-testid="nav-pc" data-view="pc" aria-controls="view-pc" aria-selected="false" tabindex="-1">내 PC</button>
+        <button type="button" role="tab" id="tab-local" data-testid="nav-local" data-view="local" aria-controls="view-local" aria-selected="false" tabindex="-1">내 PC</button>
       </div>
       <p class="sidebar-note">메뉴는 위·아래 방향키로 이동할 수 있습니다.</p>
     </nav>
 
     <main id="main" tabindex="-1">
       <div id="error-message" class="error-banner" data-testid="error-message" role="alert" hidden></div>
+      <p id="appearance-notice" class="appearance-notice" data-testid="appearance-notice" role="status" aria-live="polite" hidden></p>
 
       <p class="notice">
         <strong>제공 공통 UI</strong>와 <strong>학생 구현 표시</strong>(student/extension.mjs)는 구분되어 있습니다.
@@ -46,6 +48,20 @@
 
       <section id="view-protection" class="view" role="tabpanel" aria-labelledby="tab-protection">
         <h1>보호 현황</h1>
+        <section id="pc-status" class="card provided" aria-label="내 PC 상태"></section>
+        <section id="local-pc-notice" class="card provided local-pc-notice" data-testid="local-pc-notice" aria-labelledby="local-pc-notice-title" tabindex="-1" hidden>
+          <h2 id="local-pc-notice-title">내 PC 점검 모드 <span class="tag">제공 · 실행 안내</span></h2>
+          <p class="local-pc-lead">내 PC 상태는 확인할 수 있습니다. 계정·AI·SDP 연결은 이 실행에 포함되지 않았습니다. 위쪽 「내 PC 확인」부터 시작하세요.</p>
+          <ol class="connect-steps">
+            <li>위쪽 「내 PC 확인」을 눌러 CPU·메모리·디스크·네트워크·Windows 방화벽·Windows 기록 값을 읽습니다.</li>
+            <li>계속 지켜보려면 「10초마다 확인」을 켭니다. 앱 탭이 보이는 동안에만 확인합니다.</li>
+            <li>로그인·업무 앱·보안 기록·AI 연결이 필요한 작업은 담당자가 안내한 연결 실행으로 앱을 다시 열어 진행합니다. 이 화면에서는 연결을 시작하지 않습니다.</li>
+          </ol>
+          <p class="muted">이 안내는 서버가 알려 준 실행 형태를 화면에 옮긴 것입니다. 권한·연결 성공·안전·통과 판정이 아니며, 제공 UI라서 학생 성취로 계산하지 않습니다. 그래서 AI 연결 절차와 AI 연결 점검 카드는 이 실행에서 접어 두었습니다.</p>
+        </section>
+        <figure id="start-picture" class="start-picture" hidden>
+          <img id="start-picture-image" class="start-picture-image" alt="" aria-hidden="true" draggable="false" decoding="async">
+        </figure>
 
         <div class="grid-2">
           <section class="card provided" aria-labelledby="identity-title">
@@ -90,7 +106,7 @@
           <pre id="diag-output" class="diag-output" tabindex="0" hidden></pre>
         </section>
 
-        <section class="card provided" aria-labelledby="ai-connect-title" data-testid="ai-connect-card">
+        <section id="ai-connect-card" class="card provided" aria-labelledby="ai-connect-title" data-testid="ai-connect-card">
           <h2 id="ai-connect-title">AI 연결 <span class="tag">제공 · 17단계 연결 절차</span></h2>
           <div class="connect-layout">
             <div class="connect-body">
@@ -143,7 +159,7 @@
           </div>
         </section>
 
-        <section class="card provided" aria-labelledby="ai-connection-title">
+        <section id="ai-connection-card" class="card provided" aria-labelledby="ai-connection-title">
           <h2 id="ai-connection-title">AI 연결 점검 <span class="tag">제공</span></h2>
           <p class="muted">현재 로그인과 앱 권한으로 모델 응답을 점검합니다. 설정값 존재·모델 목록 응답은 사건 설명의 성공과 별도로 확인합니다. 브라우저에서 열쇠를 입력하거나 복사하지 않습니다.</p>
           <div class="row">
@@ -228,36 +244,35 @@
           <div id="student-action" class="student-slot" aria-live="polite"></div>
         </section>
       </section>
-      <section id="view-pc" class="view" role="tabpanel" aria-labelledby="tab-pc" hidden>
+
+      <section id="view-local" class="view" role="tabpanel" aria-labelledby="tab-local" hidden>
         <h1>내 PC</h1>
-        <p class="notice">
-          이 화면은 이 PC의 상태를 <strong>읽기만</strong> 합니다. 방화벽·이벤트·네트워크 설정은 바꾸지 않습니다.
-          읽기가 실패한 부분은 가짜 값 없이 확인 불가로 표시합니다.
-        </p>
-        <div class="row pc-toolbar">
-          <button type="button" id="pc-refresh" class="btn">다시 조회</button>
-          <span id="pc-checked-at" class="checked-at"></span>
+        <p class="muted">이 앱이 실행 중인 PC의 값을 읽기 전용으로 확인합니다. 서버 연결과 관계없이 동작하며, 값은 AI·외부로 자동 전송하지 않습니다.</p>
+        <div class="row">
+          <button type="button" id="local-refresh" class="btn">다시 조회</button>
+          <span id="local-checked-at" class="checked-at"></span>
+        </div>
+        <p id="local-error" class="error-banner" role="alert" hidden></p>
+
+        <div class="grid-2">
+          <section class="card student" aria-labelledby="local-system-title">
+            <h2 id="local-system-title">시스템 상태 <span class="tag tag-student">학생 구현</span></h2>
+            <div id="local-system" aria-live="polite"><p class="muted">조회 중…</p></div>
+          </section>
+          <section class="card student" aria-labelledby="local-network-title">
+            <h2 id="local-network-title">연결 상태 <span class="tag tag-student">학생 구현</span></h2>
+            <div id="local-network" aria-live="polite"><p class="muted">조회 중…</p></div>
+          </section>
         </div>
 
         <div class="grid-2">
-          <section class="card local" aria-labelledby="pc-system-title">
-            <h2 id="pc-system-title">시스템 상태 <span class="tag tag-local">이 PC 실측</span></h2>
-            <div id="pc-system" aria-live="polite"></div>
+          <section class="card student" aria-labelledby="local-firewall-title">
+            <h2 id="local-firewall-title">방화벽 설정 <span class="tag tag-student">학생 구현</span></h2>
+            <div id="local-firewall" aria-live="polite"><p class="muted">조회 중…</p></div>
           </section>
-          <section class="card local" aria-labelledby="pc-network-title">
-            <h2 id="pc-network-title">연결 상태 <span class="tag tag-local">이 PC 실측</span></h2>
-            <div id="pc-network" aria-live="polite"></div>
-          </section>
-        </div>
-
-        <div class="grid-2">
-          <section class="card local" aria-labelledby="pc-firewall-title">
-            <h2 id="pc-firewall-title">방화벽 <span class="tag tag-local">읽기 전용</span></h2>
-            <div id="pc-firewall" aria-live="polite"></div>
-          </section>
-          <section class="card local" aria-labelledby="pc-events-title">
-            <h2 id="pc-events-title">최근 시스템 이벤트 <span class="tag tag-local">읽기 전용</span></h2>
-            <div id="pc-events" aria-live="polite"></div>
+          <section class="card student" aria-labelledby="local-events-title">
+            <h2 id="local-events-title">최근 이벤트 <span class="tag tag-student">학생 구현</span></h2>
+            <div id="local-events" aria-live="polite"><p class="muted">조회 중…</p></div>
           </section>
         </div>
       </section>
